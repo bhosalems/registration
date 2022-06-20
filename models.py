@@ -9,7 +9,7 @@ class SpatialTransformer(nn.Module):
     def __init__(self, size, mode='bilinear'):
         super(SpatialTransformer, self).__init__()
         zero = torch.cat([torch.eye(3), torch.zeros([3,1])], 1)[None]
-        self.meshgrid = nn.Parameter(nnf.affine_grid(zero, [1,1,*size], align_corners=False), requires_grad=False)
+        self.meshgrid = nn.Parameter(nnf.affine_grid(zero, [1, 1, *size], align_corners=False), requires_grad=False)
         self.mode = mode
 
     def forward(self, src, flow):

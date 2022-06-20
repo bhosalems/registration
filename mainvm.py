@@ -9,20 +9,22 @@ import torch
 from torch.optim import Adam, SGD
 from torch.utils.tensorboard import SummaryWriter
 # import nibabel as nib
-from dataset import candi, msd
+import dataset.candi as candi
+import dataset.msd as msd
+import dataset.ixi as ixi
 from torch.optim.lr_scheduler import StepLR
 from train import TrainModel
 from models import RegNet
 
 CANDI_PATH = '~/data/CANDI_split'
-MSD_PATH = '~/data/MSD'
+MSD_PATH = r'C:\Users\mahes\Desktop\UB\Thesis\Img registration\registration\dataset\MSD'
 
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--finetune', action='store_true',
                         help='Fine tuning the model')
     parser.add_argument('--pretrain', type=str, default=None, help='pth name of pre-trained model')
-    parser.add_argument('--dataset', type=str, default='CANDI', help='CANDI for now')
+    parser.add_argument('--dataset', type=str, default='CANDI', help='CANDI, prostate, IXI')
     parser.add_argument('--lr', type=float, default=1e-4, help='Initial learning rate')
     parser.add_argument('--weightdecay', type=float, default=0, help='Weightdecay')
     parser.add_argument('--epoch', type=int, default = 500, help = "Max Epoch")
@@ -68,17 +70,23 @@ if __name__ == "__main__":
     logging.info(f'GPU: {args.gpu}')
 
     if args.dataset=='CANDI':
-        pad_size=[160,160,128]
+        pad_size=[160, 160, 128]
         window_r = 7
         NUM_CLASS = 29
         train_dataloader, test_dataloader = candi.CANDI_dataloader(args, datapath=CANDI_PATH, size=pad_size)
-    elif args.dataset=='prostate' or args.dataset=='hippocampus':
+    elif args.dataset == 'prostate' or args.dataset == 'hippocampus':
         train_dataloader, test_dataloader, _= msd.MSD_dataloader(args.dataset, args.bsize, args.num_workers, datapath=MSD_PATH)
         NUM_CLASS = 3
-        window_r = 5 if args.dataset=='hippocampus' else 9
-        pad_size = [48,64,48] if args.dataset=='hippocampus' else [240,240,96] 
+        window_r = 5 if args.dataset == 'hippocampus' else 9
+        pad_size = [48, 64, 48] if args.dataset=='hippocampus' else [240, 240, 96]
+    elif args.dataset == 'IXI':
+        train_loader,test_loader = ixi.IXI_dataloader(batch_size=args.bsize, num_workers=4)
+        pad_size = [160, 160, 128]
+        window_r = 7
+        NUM_CLASS = 213
+
     ##BUILD MODEL##
-    model = RegNet(pad_size, winsize = window_r, dim = 3, n_class=NUM_CLASS).cuda()
+    model = RegNet(pad_size, winsize=window_r, dim=3, n_class=NUM_CLASS).cuda()
     if len(gpu)>1:
         model = torch.nn.DataParallel(model, device_ids=gpu)
     #model = nn.DataParallel(model, device_ids=gpu).to(device)

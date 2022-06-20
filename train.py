@@ -7,6 +7,7 @@ from torch.optim import Adam, SGD
 from torch.optim.lr_scheduler import StepLR
 from uncert.snapshot import CyclicCosAnnealingLR
 
+
 class TrainModel():
     def __init__(self, model, train_dataloader, test_dataloader, args, n_class, tb=None):
         self.model = model
@@ -15,7 +16,7 @@ class TrainModel():
         self.tb = tb
         self.args = args
         self.n_class = n_class
-        self.printfreq=50
+        self.printfreq = 50
         #
         if args.logfile:
             savepath = f'ckpts/{args.logfile}'

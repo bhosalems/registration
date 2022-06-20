@@ -316,6 +316,7 @@ def pad(x, shape):
     nopad[s_x:s_x+x.shape[0],s_y: s_y + x.shape[1], s_z:s_z + x.shape[2]] = 1
     return new_x, nopad
 
+
 def normalize(x):
     mean = np.mean(x)
     std = np.std(x, ddof=1)
@@ -327,6 +328,7 @@ def normalize(x):
     #linear transform to [0,1]
     z = (y-y.min())/y.max()
     return z
+
 
 def preprocess(name, padsize = (48,64,48), isimg=False): #resample=[1,1,1], 
     image = np.array(nibabel.load(name).get_fdata())
