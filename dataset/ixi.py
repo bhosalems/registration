@@ -83,9 +83,9 @@ class IXIBrainInferDataset(Dataset):
         return len(self.paths)
 
 
-def IXI_dataloader(batch_size, num_workers, datapath=r'C:\Users\mahes\Desktop\UB\Thesis\Img registration\TransMorph_Transformer_for_Medical_Image_Registration\IXI\IXI_data\\'):
-    train_dir = datapath + r'Train\\'
-    val_dir = datapath + r'Val\\'
+def IXI_dataloader(batch_size, num_workers, datapath):
+    train_dir = datapath + r'Train/'
+    val_dir = datapath + r'Val/'
     atlas_dir = datapath + r'atlas.pkl'
     train_composed = transforms.Compose([RandomFlip(0),
                                          NumpyType((np.float32, np.float32)),
@@ -93,8 +93,10 @@ def IXI_dataloader(batch_size, num_workers, datapath=r'C:\Users\mahes\Desktop\UB
 
     val_composed = transforms.Compose([Seg_norm(),  # rearrange segmentation label to 1 to 46
                                        NumpyType((np.float32, np.int16))])
-    train_set = IXIBrainDataset(glob.glob(train_dir + '*.pkl'), atlas_dir, transforms=train_composed)
-    val_set = IXIBrainInferDataset(glob.glob(val_dir + '*.pkl'), atlas_dir, transforms=val_composed)
+    train_dir = train_dir + '*.pkl'
+    val_dir = val_dir + '*.pkl'
+    train_set = IXIBrainDataset(glob.glob(train_dir), atlas_dir, transforms=train_composed)
+    val_set = IXIBrainInferDataset(glob.glob(val_dir), atlas_dir, transforms=val_composed)
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
     val_loader = DataLoader(val_set, batch_size=1, shuffle=False, num_workers=num_workers, pin_memory=True, drop_last=True)
     return train_loader, val_loader

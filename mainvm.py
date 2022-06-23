@@ -15,9 +15,11 @@ import dataset.ixi as ixi
 from torch.optim.lr_scheduler import StepLR
 from train import TrainModel
 from models import RegNet
+import numpy as np
 
 CANDI_PATH = '~/data/CANDI_split'
 MSD_PATH = r'C:\Users\mahes\Desktop\UB\Thesis\Img registration\registration\dataset\MSD'
+IXI_PATH = r'/home/csgrad/mbhosale/Image_registration/TransMorph_Transformer_for_Medical_Image_Registration/IXI/IXI_data/'
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -32,7 +34,7 @@ def get_args():
     parser.add_argument('--num_workers', type=int, default=4)
     # parser.add_argument('--savefrequency', type=int, default=1, help='savefrequency')
     # parser.add_argument('--testfrequency', type=int, default=1, help='testfrequency')
-    parser.add_argument('--gpu', default='0,1', type=str, help='GPU device ID (default: -1)')
+    parser.add_argument('--gpu', default='0, 1', type=str, help='GPU device ID (default: -1)')
     parser.add_argument('--logfile', default='', type=str)
     parser.add_argument('--weight', type=str, default='1,0.01', help='LAMBDA, GAMMA')
     # parser.add_argument('--uncert', type=int, default=0)
@@ -44,6 +46,7 @@ def get_args():
     return parser.parse_args()
 
 if __name__ == "__main__":
+    print(np.arange(2, 4))
     args = get_args()
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
     args.weight = [float(i) for i in args.weight.split(',')]
@@ -64,7 +67,8 @@ if __name__ == "__main__":
     #device = torch.device(0)
     device = torch.device("cuda")
     logging.info(f'Device: {device}')
-    
+
+    print(torch.cuda.is_available())
     logging.info(f"DEVICE COUNT {torch.cuda.device_count()}")
     gpu = [int(i) for i in range(torch.cuda.device_count())]
     logging.info(f'GPU: {args.gpu}')
@@ -75,13 +79,13 @@ if __name__ == "__main__":
         NUM_CLASS = 29
         train_dataloader, test_dataloader = candi.CANDI_dataloader(args, datapath=CANDI_PATH, size=pad_size)
     elif args.dataset == 'prostate' or args.dataset == 'hippocampus':
-        train_dataloader, test_dataloader, _= msd.MSD_dataloader(args.dataset, args.bsize, args.num_workers, datapath=MSD_PATH)
+        train_dataloader, test_dataloader, _ = msd.MSD_dataloader(args.dataset, args.bsize, args.num_workers, datapath=MSD_PATH)
         NUM_CLASS = 3
         window_r = 5 if args.dataset == 'hippocampus' else 9
         pad_size = [48, 64, 48] if args.dataset=='hippocampus' else [240, 240, 96]
     elif args.dataset == 'IXI':
-        train_loader,test_loader = ixi.IXI_dataloader(batch_size=args.bsize, num_workers=4)
-        pad_size = [160, 160, 128]
+        train_dataloader, test_dataloader = ixi.IXI_dataloader(datapath=IXI_PATH, batch_size=args.bsize, num_workers=4)
+        pad_size = [160, 192, 224]
         window_r = 7
         NUM_CLASS = 213
 
