@@ -1,3 +1,4 @@
+import numpy as np
 import random
 from collections import defaultdict
 import itertools
@@ -15,7 +16,7 @@ import dataset.ixi as ixi
 from torch.optim.lr_scheduler import StepLR
 from train import TrainModel
 from models import RegNet
-import numpy as np
+
 
 CANDI_PATH = '~/data/CANDI_split'
 MSD_PATH = r'C:\Users\mahes\Desktop\UB\Thesis\Img registration\registration\dataset\MSD'
@@ -46,7 +47,6 @@ def get_args():
     return parser.parse_args()
 
 if __name__ == "__main__":
-    print(np.arange(2, 4))
     args = get_args()
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
     args.weight = [float(i) for i in args.weight.split(',')]
@@ -68,7 +68,6 @@ if __name__ == "__main__":
     device = torch.device("cuda")
     logging.info(f'Device: {device}')
 
-    print(torch.cuda.is_available())
     logging.info(f"DEVICE COUNT {torch.cuda.device_count()}")
     gpu = [int(i) for i in range(torch.cuda.device_count())]
     logging.info(f'GPU: {args.gpu}')
@@ -87,7 +86,7 @@ if __name__ == "__main__":
         train_dataloader, test_dataloader = ixi.IXI_dataloader(datapath=IXI_PATH, batch_size=args.bsize, num_workers=4)
         pad_size = [160, 192, 224]
         window_r = 7
-        NUM_CLASS = 213
+        NUM_CLASS = 46
 
     ##BUILD MODEL##
     model = RegNet(pad_size, winsize=window_r, dim=3, n_class=NUM_CLASS).cuda()

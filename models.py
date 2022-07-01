@@ -181,12 +181,16 @@ class RegNet(nn.Module):
             if fix_nopad is not None:
                 fix = fix*fix_nopad
                 warp = warp*fix_nopad
-            sim_loss, sim_mask = ncc_loss(warp,fix, reduce_mean=False, winsize=self.winsize) #[0,1]
+            # sim_loss, sim_mask = ncc_loss(warp, fix, reduce_mean=False, winsize=self.winsize) #[0,1]
+            sim_loss = vxvm_ncc(y_true=fix, y_pred=warp, win=[self.winsize, self.winsize, self.winsize])
+            # torch.save(sim_loss, 'sim_loss.pt')
+            # torch.save(sim_mask, 'sim_mask.pt')
+            # print("Sim_loss output" + str(torch.sum(torch.isnan(sim_loss)).item()))
             grad_loss = gradient_loss(flow, keepdim=False).mean()
-            if fix_nopad is not None:
-                mask = fix_nopad.bool()
-                sim_mask = sim_mask*mask
-            sloss = sim_loss[sim_mask].mean()
+            # if fix_nopad is not None:
+                # mask = fix_nopad.bool()
+                # sim_mask = sim_mask*mask
+            sloss = sim_loss
             
             if eval:
                 dice = self.eval_dice(fix_label, moving_label, flow)

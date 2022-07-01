@@ -16,7 +16,7 @@ class TrainModel():
         self.tb = tb
         self.args = args
         self.n_class = n_class
-        self.printfreq = 50
+        self.printfreq = 1
         #
         if args.logfile:
             savepath = f'ckpts/{args.logfile}'
@@ -27,17 +27,19 @@ class TrainModel():
         self.savepath = savepath
         #
     def trainIter(self, fix, moving, fixed_label, moving_label, fixed_nopad=None): 
-        sim_loss, grad_loss, dice = self.model.forward(fix, moving,
-            fixed_label, moving_label, fix_nopad=fixed_nopad, rtloss=True,eval=True)
-        sim_loss, grad_loss, dice = sim_loss.mean(), grad_loss.mean(), dice.mean()
+        sim_loss, grad_loss = self.model.forward(fix, moving,
+            fixed_label, moving_label, fix_nopad=fixed_nopad, rtloss=True, eval=False)
+        sim_loss, grad_loss = sim_loss.mean(), grad_loss.mean()
         loss = float(self.args.weight[0])*sim_loss + float(self.args.weight[1])*grad_loss
+        # if sim_loss.is_nan():
+            # print("Wake up and add debugging Chap Chap!!")
         if self.global_idx%self.printfreq ==0:
-            logging.info(f'simloss={sim_loss}, gradloss={grad_loss}, loss={loss}, dice={dice}')
+            logging.info(f'simloss={sim_loss}, gradloss={grad_loss}, loss={loss}')
         if self.tb is not None:
             self.tb.add_scalar("train/loss", loss.item(), self.global_idx)
             self.tb.add_scalar("train/grad_loss", grad_loss.item(), self.global_idx)
             self.tb.add_scalar("train/sim_loss", sim_loss.item(), self.global_idx)
-        return loss,dice
+        return loss
 
     def data_extract(self, samples):
         if len(samples)==4:
@@ -45,58 +47,77 @@ class TrainModel():
             fixed_nopad = None
         elif len(samples)==5:
             fixed, fixed_label, fixed_nopad, moving, moving_label = samples
+        fixed = fixed.float().cuda()
+        moving = moving.float().cuda()
+        # moving = torch.unsqueeze(moving, 1).float().cuda()
         #
-        fixed = torch.unsqueeze(fixed,1).float().cuda()
-        moving = torch.unsqueeze(moving,1).float().cuda()
-        fixed_label = fixed_label.float().cuda()
-        fixed_label = torch.nn.functional.one_hot(fixed_label.long(), num_classes=self.n_class).float().permute(0,4,1,2,3)
-        moving_label = moving_label.float().cuda()
-        moving_label = torch.nn.functional.one_hot(moving_label.long(), num_classes=self.n_class).float().permute(0,4,1,2,3)
+        # fixed = torch.unsqueeze(fixed, 1).float().cuda()
+        # moving = torch.unsqueeze(moving, 1).float().cuda()
+        # fixed_label = fixed_label.float().cuda()
+        # fixed_label = torch.nn.functional.one_hot(fixed_label.long(), num_classes=self.n_class).float()
+        # fixed_label = fixed_label.permute(0, 4, 1, 2, 3)
+        # moving_label = moving_label.float().cuda()
+        # moving_label = torch.nn.functional.one_hot(moving_label.long(), num_classes=self.n_class).float().permute(0,4,1,2,3)
         if fixed_nopad is not None:
             fixed_nopad = fixed_nopad.float().cuda()[:, None]
         return fixed, fixed_label, moving, moving_label, fixed_nopad
 
     def test(self, epoch):
-        tst_dice = AverageMeter()
+        # tst_dice = AverageMeter()
+        simloss = AverageMeter()
+        gradloss = AverageMeter()
         self.model.eval()
         for _, samples in enumerate(self.test_dataloader):
             fixed, fixed_label, moving, moving_label, fixed_nopad = self.data_extract(samples)
 
-            dice = self.model.forward(fixed, moving,  fixed_label, moving_label, fixed_nopad, rtloss=False, eval=True)
-            dice = dice.mean()
-            tst_dice.update(dice.item())
+            sim_loss, grad_loss = self.model.forward(fixed, moving,  fixed_label, moving_label, fixed_nopad, rtloss=True, eval=False)
+            sim_loss = sim_loss.mean()
+            grad_loss = grad_loss.mean()
+            simloss.update(sim_loss.item())
+            gradloss.update(grad_loss.item())
         #epoch
         if self.tb is not None:
-            self.tb.add_scalar("test/dice", tst_dice.avg, epoch)
-        return tst_dice.avg
+            self.tb.add_scalar("test/grad_loss", gradloss.avg, epoch)
+            self.tb.add_scalar("test/sim_loss", simloss.avg, epoch)
+        return gradloss.avg, simloss.avg
     
     def train_epoch(self, optimizer, scheduler, epoch):
-        epoch_train_dice = AverageMeter()
+        # epoch_train_dice = AverageMeter()
+        epoch_train_loss = AverageMeter()
         self.model.train()
         for _, samples in enumerate(self.train_dataloader):
             fixed, fixed_label, moving, moving_label, fixed_nopad = self.data_extract(samples)
             self.global_idx += 1
-            loss, trdice = self.trainIter(fixed, moving, fixed_label, moving_label, fixed_nopad=fixed_nopad)
+            trloss = self.trainIter(fixed, moving, fixed_label, moving_label, fixed_nopad=fixed_nopad)
             optimizer.zero_grad()
-            loss.backward()
+            trloss.backward()
             optimizer.step()
             if scheduler is not None:
                 scheduler.step()
                     
-            epoch_train_dice.update(trdice.item())       
+            # epoch_train_dice.update(trdice.item())
+            epoch_train_loss.update(trloss.item())       
         #epoch
         
         if self.tb is not None:
-            self.tb.add_scalar("train/dice", epoch_train_dice.avg, epoch)
+            # self.tb.add_scalar("train/dice", epoch_train_dice.avg, epoch)
+            self.tb.add_scalar("train/loss", epoch_train_loss.avg, epoch)
         
         #validate per epoch
         # import ipdb; ipdb.set_trace()
-        dice = self.test(epoch)
-        if dice>self.bestdice:
-            self.bestdice = dice
-            savename = os.path.join(self.savepath, f'{epoch}_{(dice*100):2f}.ckpt')
+        # dice = self.test(epoch)
+        tst_gradloss, tst_simloss = self.test(epoch)
+        tstloss = tst_gradloss + tst_simloss
+        # if dice>self.bestdice:
+            # self.bestdice = dice
+            # savename = os.path.join(self.savepath, f'{epoch}_{(dice*100):2f}.ckpt')
+            # torch.save(self.model.state_dict(), savename)
+        
+        if tstloss<self.bestloss:
+            self.bestloss = tstloss
+            savename = os.path.join(self.savepath, f'{epoch}_{(tstloss*100):2f}.ckpt')
             torch.save(self.model.state_dict(), savename)
-        logging.info(f'Epoch:{epoch}...TestDice:{(dice*100):2f}, Best{(self.bestdice*100):2f}')
+        logging.info(f'Epoch:{epoch}...Testloss:{(tstloss*100):2f}, Best{(self.bestloss*100):2f}')
 
     def run(self):#device=torch.device("cuda:0")
         if self.args.sgd:
@@ -108,16 +129,18 @@ class TrainModel():
         scheduler = None
 
         self.global_idx = 0
-        self.bestdice=0
+        self.bestdice = 0
+        self.bestloss = 0
         for epoch in range(self.args.epoch):
             self.train_epoch(optimizer, scheduler, epoch)
     
     def run_snapshot(self, cycles=20, ):
         epochs = self.args.epoch
         epochs_per_cycle = epochs// cycles
-        global_epoch=0
+        global_epoch = 0
         self.global_idx = 0
-        self.bestdice=0
+        self.bestdice = 0
+        self.bestloss = 0
 
         for n_cycle in range(cycles):
             if self.args.sgd:
