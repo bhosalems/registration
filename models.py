@@ -170,6 +170,23 @@ class RegNet(nn.Module):
         warpseg = torch.nn.functional.one_hot(warplabel.long(), num_classes=self.n_class).float().permute(0,4,1,2,3)
         dice = dice_onehot(warpseg[:,1:,:,:,:].detach(), fixed_label[:,1:,:,:,:].detach())#disregard background
         return dice
+    
+    def dice_val_VOI(self, y_pred, y_true):        
+        VOI_lbls = [1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 21, 22, 23, 25, 26, 27, 28, 29, 30, 31, 32, 34, 36]
+        pred = y_pred.detach().cpu().numpy()[0, 0, ...]
+        true = y_true.detach().cpu().numpy()[0, 0, ...]
+        DSCs = np.zeros((len(VOI_lbls), 1))
+        idx = 0
+        for i in VOI_lbls:
+            pred_i = pred == i
+            true_i = true == i
+            intersection = pred_i * true_i
+            intersection = np.sum(intersection)
+            union = np.sum(pred_i) + np.sum(true_i)
+            dsc = (2.*intersection) / (union + 1e-5)
+            DSCs[idx] =dsc
+            idx += 1
+        return np.mean(DSCs)
 
     def forward(self, fix, moving, fix_label, moving_label, fix_nopad=None, rtloss=True, eval=True):
         x = torch.cat([moving,fix], dim = 1)
@@ -183,9 +200,6 @@ class RegNet(nn.Module):
                 warp = warp*fix_nopad
             # sim_loss, sim_mask = ncc_loss(warp, fix, reduce_mean=False, winsize=self.winsize) #[0,1]
             sim_loss = vxvm_ncc(y_true=fix, y_pred=warp, win=[self.winsize, self.winsize, self.winsize])
-            # torch.save(sim_loss, 'sim_loss.pt')
-            # torch.save(sim_mask, 'sim_mask.pt')
-            # print("Sim_loss output" + str(torch.sum(torch.isnan(sim_loss)).item()))
             grad_loss = gradient_loss(flow, keepdim=False).mean()
             # if fix_nopad is not None:
                 # mask = fix_nopad.bool()
@@ -193,13 +207,17 @@ class RegNet(nn.Module):
             sloss = sim_loss
             
             if eval:
-                dice = self.eval_dice(fix_label, moving_label, flow)
+                # dice = self.eval_dice(fix_label, moving_label, flow)
+                warped_seg = self.spatial_transformer_network(moving_label, flow)
+                dice  = self.dice_val_VOI(warped_seg, fix_label)
                 return sloss, grad_loss, dice
             else:
                 return sloss, grad_loss
         else:
             if eval:
-                dice = self.eval_dice(fix_label, moving_label, flow)
+                # dice = self.eval_dice(fix_label, moving_label, flow)
+                warped_seg = self.spatial_transformer_network(moving_label, flow)
+                dice = self.dice_val_VOI(warped_seg, fix_label)
                 return dice
             else:
                 return flow
