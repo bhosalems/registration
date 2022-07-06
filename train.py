@@ -80,17 +80,21 @@ class TrainModel():
     def train_epoch(self, optimizer, scheduler, epoch):
         epoch_train_dice = AverageMeter()
         self.model.train()
+        idx = 0
         for _, samples in enumerate(self.train_dataloader):
             fixed, fixed_label, moving, moving_label, fixed_nopad = self.data_extract(samples)
+            # torch.save(fixed, 'fixed.pt')
+            # torch.save(moving, 'moving.pt')
             self.global_idx += 1
+            logging.info(f'iteration={idx}/403')
             trloss, trdice = self.trainIter(fixed, moving, fixed_label, moving_label, fixed_nopad=fixed_nopad)
             optimizer.zero_grad()
             trloss.backward()
             optimizer.step()
             if scheduler is not None:
                 scheduler.step()
-                    
             epoch_train_dice.update(trdice.item())  
+            idx+=1
         #epoch
         
         if self.tb is not None:

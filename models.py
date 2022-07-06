@@ -171,7 +171,8 @@ class RegNet(nn.Module):
         dice = dice_onehot(warpseg[:,1:,:,:,:].detach(), fixed_label[:,1:,:,:,:].detach())#disregard background
         return dice
     
-    def dice_val_VOI(self, y_pred, y_true):        
+    def dice_val_VOI(self, y_pred, y_true): 
+        # Mahesh - Only checks the segmentation DICE of below lables, not all.       
         VOI_lbls = [1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 21, 22, 23, 25, 26, 27, 28, 29, 30, 31, 32, 34, 36]
         pred = y_pred.detach().cpu().numpy()[0, 0, ...]
         true = y_true.detach().cpu().numpy()[0, 0, ...]
@@ -200,6 +201,7 @@ class RegNet(nn.Module):
                 warp = warp*fix_nopad
             # sim_loss, sim_mask = ncc_loss(warp, fix, reduce_mean=False, winsize=self.winsize) #[0,1]
             sim_loss = vxvm_ncc(y_true=fix, y_pred=warp, win=[self.winsize, self.winsize, self.winsize])
+            # tmp_sim, tmp_mask = ncc_loss(warp, fix, reduce_mean=False, winsize=self.winsize) #[0,1]
             grad_loss = gradient_loss(flow, keepdim=False).mean()
             # if fix_nopad is not None:
                 # mask = fix_nopad.bool()
@@ -209,6 +211,7 @@ class RegNet(nn.Module):
             if eval:
                 # dice = self.eval_dice(fix_label, moving_label, flow)
                 warped_seg = self.spatial_transformer_network(moving_label, flow)
+                # warped_seg = torch.max(warped_seg.detach(),dim=1)[1]
                 dice  = self.dice_val_VOI(warped_seg, fix_label)
                 return sloss, grad_loss, dice
             else:
@@ -217,6 +220,7 @@ class RegNet(nn.Module):
             if eval:
                 # dice = self.eval_dice(fix_label, moving_label, flow)
                 warped_seg = self.spatial_transformer_network(moving_label, flow)
+                # warped_seg = torch.max(warped_seg.detach(),dim=1)[1]
                 dice = self.dice_val_VOI(warped_seg, fix_label)
                 return dice
             else:

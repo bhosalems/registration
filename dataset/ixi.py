@@ -9,10 +9,10 @@ import dataset.utils.trans as trans
 
 
 class IXIBrainDataset(Dataset):
-    def __init__(self, data_path, atlas_path, transforms):
+    def __init__(self, data_path, atlas_path):#, transforms):
         self.paths = data_path
         self.atlas_path = atlas_path
-        self.transforms = transforms
+        # self.transforms = transforms
 
     def one_hot(self, img, C):
         out = np.zeros((C, img.shape[1], img.shape[2], img.shape[3]))
@@ -33,8 +33,8 @@ class IXIBrainDataset(Dataset):
         x, y = x[None, ...], y[None, ...]
         x_seg, y_seg = x_seg[None, ...], y_seg[None, ...]
         # print(x.shape, y.shape)#(1, 240, 240, 155) (1, 240, 240, 155)
-        x, x_seg = self.transforms([x, x_seg])
-        y, y_seg = self.transforms([y, y_seg])
+        # x, x_seg = self.transforms([x, x_seg])
+        # y, y_seg = self.transforms([y, y_seg])
         #y = self.one_hot(y, 2)
         #print(y.shape)
         #sys.exit(0)
@@ -51,6 +51,8 @@ class IXIBrainDataset(Dataset):
         #sys.exit(0)
         #y = np.squeeze(y, axis=0)
         x, y, x_seg, y_seg = torch.from_numpy(x), torch.from_numpy(y), torch.from_numpy(x_seg), torch.from_numpy(y_seg)
+        # torch.save(x, 'x1.pt')
+        # torch.save(y, 'y1.pt')
         return x, x_seg, y, y_seg
 
     def __len__(self):
@@ -58,10 +60,10 @@ class IXIBrainDataset(Dataset):
 
 
 class IXIBrainInferDataset(Dataset):
-    def __init__(self, data_path, atlas_path, transforms):
+    def __init__(self, data_path, atlas_path):#, transforms):
         self.atlas_path = atlas_path
         self.paths = data_path
-        self.transforms = transforms
+        # self.transforms = transforms
 
     def one_hot(self, img, C):
         out = np.zeros((C, img.shape[1], img.shape[2], img.shape[3]))
@@ -76,8 +78,8 @@ class IXIBrainInferDataset(Dataset):
         # Mahesh Why did they increase the dimension here?
         x, y = x[None, ...], y[None, ...]
         x_seg, y_seg = x_seg[None, ...], y_seg[None, ...]
-        x, x_seg = self.transforms([x, x_seg])
-        y, y_seg = self.transforms([y, y_seg])
+        # x, x_seg = self.transforms([x, x_seg])
+        # y, y_seg = self.transforms([y, y_seg])
         x = np.ascontiguousarray(x)# [Bsize,channelsHeight,,Width,Depth]
         y = np.ascontiguousarray(y)
         x_seg = np.ascontiguousarray(x_seg)  # [Bsize,channelsHeight,,Width,Depth]
@@ -93,16 +95,16 @@ def IXI_dataloader(batch_size, num_workers, datapath):
     train_dir = datapath + r'Train/'
     val_dir = datapath + r'Val/'
     atlas_dir = datapath + r'atlas.pkl'
-    train_composed = transforms.Compose([trans.RandomFlip(0),
-                                         trans.NumpyType((np.float32, np.float32)),
-                                         ])
+    # train_composed = transforms.Compose([trans.RandomFlip(0),
+                                        #  trans.NumpyType((np.float32, np.float32)),
+                                        #  ])
 
-    val_composed = transforms.Compose([trans.Seg_norm(),  # rearrange segmentation label to 1 to 46
-                                       trans.NumpyType((np.float32, np.int16))])
+    # val_composed = transforms.Compose([trans.Seg_norm(),  # rearrange segmentation label to 1 to 46
+                                    #    trans.NumpyType((np.float32, np.int16))])
     train_dir = train_dir + '*.pkl'
     val_dir = val_dir + '*.pkl'
-    train_set = IXIBrainDataset(glob.glob(train_dir), atlas_dir, transforms=train_composed)
-    val_set = IXIBrainInferDataset(glob.glob(val_dir), atlas_dir, transforms=val_composed)
+    train_set = IXIBrainDataset(glob.glob(train_dir), atlas_dir)#, transforms=train_composed)
+    val_set = IXIBrainInferDataset(glob.glob(val_dir), atlas_dir)#, transforms=val_composed)
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
     val_loader = DataLoader(val_set, batch_size=1, shuffle=False, num_workers=num_workers, pin_memory=True, drop_last=True)
     return train_loader, val_loader

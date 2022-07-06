@@ -15,8 +15,8 @@ import dataset.msd as msd
 import dataset.ixi as ixi
 from torch.optim.lr_scheduler import StepLR
 from train import TrainModel
+#from models import RegNet
 from models import RegNet
-
 
 CANDI_PATH = '~/data/CANDI_split'
 MSD_PATH = r'C:\Users\mahes\Desktop\UB\Thesis\Img registration\registration\dataset\MSD'
