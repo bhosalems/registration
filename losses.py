@@ -95,6 +95,10 @@ def mse_loss(x, y):
     return torch.mean( (x - y) ** 2 ) 
 
 def vxvm_ncc(y_true, y_pred, win):
+    '''
+    Adding NCC from transmorph github implementation to tackle the problem when sigmask is all zero. 
+    Somehow giving us zero result after a while
+    '''
     Ii = y_true
     Ji = y_pred
 
