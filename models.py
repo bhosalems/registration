@@ -199,8 +199,12 @@ class RegNet(nn.Module):
             if fix_nopad is not None:
                 fix = fix*fix_nopad
                 warp = warp*fix_nopad
-            # sim_loss, sim_mask = ncc_loss(warp, fix, reduce_mean=False, winsize=self.winsize) #[0,1]
-            sim_loss = vxvm_ncc(y_true=fix, y_pred=warp, win=[self.winsize, self.winsize, self.winsize])
+            sim_loss, sim_mask = ncc_loss(warp, fix, reduce_mean=False, winsize=self.winsize) #[0,1]
+            if sim_mask.any():
+                sim_loss = sim_loss[sim_mask].mean()
+            else:
+                sim_loss = torch.Tensor(np.array([0]))[0]
+            # sim_loss = vxvm_ncc(y_true=fix, y_pred=warp, win=[self.winsize, self.winsize, self.winsize])
             # tmp_sim, tmp_mask = ncc_loss(warp, fix, reduce_mean=False, winsize=self.winsize) #[0,1]
             grad_loss = gradient_loss(flow, keepdim=False).mean()
             # if fix_nopad is not None:
