@@ -14,7 +14,7 @@ class TrainModel():
         self.train_dataloader = train_dataloader
         self.test_dataloader = test_dataloader
         self.tb = tb
-        self.args = args
+        self.args = args    
         self.n_class = n_class
         self.printfreq = 1
         #
@@ -32,7 +32,7 @@ class TrainModel():
         sim_loss, grad_loss, dice = sim_loss.mean(), grad_loss.mean(), dice.mean()
         loss = float(self.args.weight[0])*sim_loss + float(self.args.weight[1])*grad_loss
         if self.global_idx%self.printfreq ==0:
-            logging.info(f'simloss={sim_loss}, gradloss={grad_loss}, loss={loss}, dice={dice}')
+            logging.info(f'simloss={sim_loss}, gradloss={grad_loss}, loss={loss}, dice={(dice*100):2f}')
         if self.tb is not None:
             self.tb.add_scalar("train/loss", loss.item(), self.global_idx)
             self.tb.add_scalar("train/grad_loss", grad_loss.item(), self.global_idx)
