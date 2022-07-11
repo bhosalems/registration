@@ -83,6 +83,7 @@ class BraTSDataset(Dataset):
         # crop
         # TODO what should be the size of the image when cropping.
         data = center_crop(data, [240, 240, 144])
+        self.size = [240, 240, 144]
         #normalize
         mean = np.mean(data)
         std = np.std(data, ddof=1)
@@ -99,7 +100,7 @@ class BraTSDataset(Dataset):
         data = np.array(nibabel.load(name).get_fdata())
         # crop
         # TODO what should be the size of the segmentation when cropping.
-        data = center_crop(data, self.size)
+        data = center_crop(data, [240, 240, 144])
         n_class = len(self.labels)
         seg = np.zeros_like(data)
         for n,label in enumerate(self.labels):

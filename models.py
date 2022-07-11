@@ -153,7 +153,11 @@ class RegNet(nn.Module):
         else:
             conv_fn = nn.Conv2d
         self.conv = conv_fn(dec_nf[-1], dim, kernel_size = 3, stride = 1, padding = 1)
-        self.spatial_transformer_network = SpatialTransformer(size)
+        # TODO Temporarily change the size for Brats dataset, there no way to change this if we use centr crop
+        # Need to incorporate this.
+        self.spatial_transformer_network = SpatialTransformer([240, 240, 144])
+        # self.spatial_transformer_network = SpatialTransformer(size)
+
         self.winsize = winsize
         self.n_class = n_class
         #feat
@@ -242,7 +246,9 @@ class RegUncertNet(RegNet):
         else:
             conv_fn = nn.Conv2d
         self.conv = conv_fn(dec_nf[-1], dim, kernel_size = 3, stride = 1, padding = 1)
-        self.spatial_transformer_network = SpatialTransformer(size)
+        # self.spatial_transformer_network = SpatialTransformer(size)
+        # Temporarily change the size for Brats dataset.
+        self.spatial_transformer_network = SpatialTransformer([240, 240, 144])
         self.winsize = winsize
         self.n_class = n_class
         #var
