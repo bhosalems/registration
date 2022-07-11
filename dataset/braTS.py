@@ -4,6 +4,7 @@ from torch.utils.data import DataLoader
 import random
 import numpy as np
 import nibabel
+import torch
 
 def center_crop(x,size):
     ori_size=x.shape
@@ -25,14 +26,21 @@ class BraTSDataset(Dataset):
         self.datapath = os.path.expanduser(data_path)
         self.mod = mod
         self.seg = seg
+        self.labels = [0, 1, 2, 4]
 
         # fix
         for fixpath in os.listdir(f'{self.datapath}/fix'):
             for f in os.listdir(f'{self.datapath}/fix/{fixpath}'):
                 if self.mod in f:
                     self.fiximg = self.preprocess_img(f'{self.datapath}/fix/{fixpath}/{f}')
+                    self.fiximg = self.fiximg[None, ...]
+                    self.fiximg = np.ascontiguousarray(self.fiximg)
+                    self.fiximg= torch.from_numpy(self.fiximg)
                 if self.seg in f:
                     self.fixseg = self.preprocess_seg(f'{self.datapath}/fix/{fixpath}/{f}')
+                    self.fixseg = self.fixseg[None, ...]
+                    self.fixseg = np.ascontiguousarray(self.fixseg)
+                    self.fixseg = torch.from_numpy(self.fixseg)
         
         # Train and Test Data
         self.imgpath = []
@@ -51,8 +59,12 @@ class BraTSDataset(Dataset):
     
     def __getitem__(self, idx):
         image = self.preprocess_img(self.imgpath[idx])
-        # seg = self.preprocess_seg(self.segpath[idx])
-        return self.fiximg, image
+        seg = self.preprocess_seg(self.segpath[idx])
+        image, seg = image[None, ...], seg[None, ...]
+        image = np.ascontiguousarray(image)
+        seg = np.ascontiguousarray(seg)
+        image, seg = torch.from_numpy(image), torch.from_numpy(seg)
+        return self.fiximg, self.fixseg, image, seg 
     
     def __len__(self):
         return len(self.imgpath) 
@@ -68,9 +80,9 @@ class BraTSDataset(Dataset):
             array: Preprocesses image array
         """
         data = np.array(nibabel.load(name).get_fdata())
-        #crop
+        # crop
         # TODO what should be the size of the image when cropping.
-        data = center_crop(data, self.size)
+        data = center_crop(data, [240, 240, 144])
         #normalize
         mean = np.mean(data)
         std = np.std(data, ddof=1)
@@ -85,7 +97,15 @@ class BraTSDataset(Dataset):
 
     def preprocess_seg(self, name):
         data = np.array(nibabel.load(name).get_fdata())
-        print('x')
+        # crop
+        # TODO what should be the size of the segmentation when cropping.
+        data = center_crop(data, self.size)
+        n_class = len(self.labels)
+        seg = np.zeros_like(data)
+        for n,label in enumerate(self.labels):
+            newlabel = n+1
+            seg[data==label] = newlabel
+        return seg
 
 
 def datasplit(rdpath, savepth='/data_local/xuangong/data/BraTS/BraTS2018/new', n_fix=1):

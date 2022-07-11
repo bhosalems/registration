@@ -13,14 +13,16 @@ from torch.utils.tensorboard import SummaryWriter
 import dataset.candi as candi
 import dataset.msd as msd
 import dataset.ixi as ixi
+import dataset.braTS as brats
 from torch.optim.lr_scheduler import StepLR
 from train import TrainModel
-#from models import RegNet
 from models import RegNet
 
 CANDI_PATH = '~/data/CANDI_split'
 MSD_PATH = r'C:\Users\mahes\Desktop\UB\Thesis\Img registration\registration\dataset\MSD'
 IXI_PATH = r'/home/csgrad/mbhosale/Image_registration/TransMorph_Transformer_for_Medical_Image_Registration/IXI/IXI_data/'
+BraTS_PATH = r'/home/csgrad/mbhosale/Image_registration/datasets/BraTS2018'
+BraTS_save_PATH = r'/home/csgrad/mbhosale/Image_registration/datasets/BraTS2018/'
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -44,6 +46,8 @@ def get_args():
     parser.add_argument('--droprate', type=float, default=0)
     parser.add_argument('--sgd', action='store_true')
     # parser.add_argument('--feat', action='store_true')
+    parser.add_argument('--modality', type=str, default='flair', help='Modality of the scan ' 
+    'to be used, used only in case of BraTS dataset for now')
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -87,6 +91,11 @@ if __name__ == "__main__":
         pad_size = [160, 192, 224]
         window_r = 7
         NUM_CLASS = 46
+    elif args.dataset == 'BraTS':
+        train_dataloader, test_dataloader = brats.braTS_dataloader(root_path=BraTS_PATH, save_path = BraTS_save_PATH, bsize=args.bsize, mod=args.modality)
+        pad_size = [240, 240, 155]
+        window_r = 7
+        NUM_CLASS = 4
 
     ##BUILD MODEL##
     model = RegNet(pad_size, winsize=window_r, dim=3, n_class=NUM_CLASS).cuda()

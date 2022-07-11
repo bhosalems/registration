@@ -75,6 +75,7 @@ class unet_core(nn.Module):
         for i in range(len(enc_nf)):
             prev_nf = input_ch if i == 0 else enc_nf[i-1]
             self.enc.append(conv_block(dim, prev_nf, enc_nf[i], 2))
+            # Mahesh Why the drouput is zero here and in the decoder, the dropout 
             self.enc.append(nn.Dropout(0))
         # self.drop = nn.Dropout(droprate)
 
