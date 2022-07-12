@@ -12,6 +12,7 @@ class IXIBrainDataset(Dataset):
     def __init__(self, data_path, atlas_path):#, transforms):
         self.paths = data_path
         self.atlas_path = atlas_path
+        self.dice_labels = [1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 21, 22, 23, 25, 26, 27, 28, 29, 30, 31, 32, 34, 36]
         # self.transforms = transforms
 
     def one_hot(self, img, C):

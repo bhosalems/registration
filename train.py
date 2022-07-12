@@ -28,7 +28,7 @@ class TrainModel():
         #
     def trainIter(self, fix, moving, fixed_label, moving_label, fixed_nopad=None): 
         sim_loss, grad_loss, dice = self.model.forward(fix, moving,
-            fixed_label, moving_label, fix_nopad=fixed_nopad, rtloss=True, eval=True)
+            fixed_label, moving_label, fix_nopad=fixed_nopad, rtloss=True, eval=True, dice_labels=self.train_dataloader.dataset.dice_labels)
         sim_loss, grad_loss, dice = sim_loss.mean(), grad_loss.mean(), dice.mean()
         loss = float(self.args.weight[0])*sim_loss + float(self.args.weight[1])*grad_loss
         if self.global_idx%self.printfreq ==0:
@@ -86,7 +86,7 @@ class TrainModel():
             # torch.save(fixed, 'fixed.pt')
             # torch.save(moving, 'moving.pt')
             self.global_idx += 1
-            logging.info(f'iteration={idx}/403')
+            logging.info(f'iteration={idx}/{len(self.train_dataloader)}')
             trloss, trdice = self.trainIter(fixed, moving, fixed_label, moving_label, fixed_nopad=fixed_nopad)
             optimizer.zero_grad()
             trloss.backward()

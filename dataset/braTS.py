@@ -27,6 +27,7 @@ class BraTSDataset(Dataset):
         self.mod = mod
         self.seg = seg
         self.labels = [0, 1, 2, 4]
+        self.dice_labels = self.labels
 
         # fix
         for fixpath in os.listdir(f'{self.datapath}/fix'):

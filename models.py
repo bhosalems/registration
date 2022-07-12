@@ -143,9 +143,10 @@ class unet_core(nn.Module):
 
         return y
 
+
 class RegNet(nn.Module):
-    def __init__(self, size, dim=3, winsize=7,
-                enc_nf=[16, 32, 32, 32], dec_nf= [32, 32, 32, 32, 32, 16, 16], n_class=29):
+    def __init__(self, size, dim=3, winsize=7, enc_nf=[16, 32, 32, 32], dec_nf= [32, 32, 32, 32, 32, 16, 
+                 16], n_class=29):
         super(RegNet, self).__init__()
         self.unet = unet_core(dim=dim, enc_nf = enc_nf, dec_nf = dec_nf)
         if(dim == 3):
@@ -176,9 +177,9 @@ class RegNet(nn.Module):
         dice = dice_onehot(warpseg[:,1:,:,:,:].detach(), fixed_label[:,1:,:,:,:].detach())#disregard background
         return dice
     
-    def dice_val_VOI(self, y_pred, y_true): 
+    def dice_val_VOI(self, y_pred, y_true, dice_labels): 
         # Mahesh - Only checks the segmentation DICE of below lables, not all.       
-        VOI_lbls = [1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 21, 22, 23, 25, 26, 27, 28, 29, 30, 31, 32, 34, 36]
+        VOI_lbls = dice_labels
         pred = y_pred.detach().cpu().numpy()[0, 0, ...]
         true = y_true.detach().cpu().numpy()[0, 0, ...]
         DSCs = np.zeros((len(VOI_lbls), 1))
@@ -194,7 +195,9 @@ class RegNet(nn.Module):
             idx += 1
         return np.mean(DSCs)
 
-    def forward(self, fix, moving, fix_label, moving_label, fix_nopad=None, rtloss=True, eval=True):
+# By deafult we give dice labels of the BraTS datatset. If you are not one-hot encoding the dataset, you have to
+# use the labels for calculating the DICE scores.
+    def forward(self, fix, moving, fix_label, moving_label, fix_nopad=None, rtloss=True, eval=True, dice_labels=[0, 1, 2, 4]):
         x = torch.cat([moving,fix], dim = 1)
         unet_out = self.unet(x)
         flow = self.conv(unet_out)
@@ -221,7 +224,7 @@ class RegNet(nn.Module):
                 # dice = self.eval_dice(fix_label, moving_label, flow)
                 warped_seg = self.spatial_transformer_network(moving_label, flow)
                 # warped_seg = torch.max(warped_seg.detach(),dim=1)[1]
-                dice  = self.dice_val_VOI(warped_seg, fix_label)
+                dice  = self.dice_val_VOI(warped_seg, fix_label, dice_labels)
                 return sloss, grad_loss, dice
             else:
                 return sloss, grad_loss
@@ -230,7 +233,7 @@ class RegNet(nn.Module):
                 # dice = self.eval_dice(fix_label, moving_label, flow)
                 warped_seg = self.spatial_transformer_network(moving_label, flow)
                 # warped_seg = torch.max(warped_seg.detach(),dim=1)[1]
-                dice = self.dice_val_VOI(warped_seg, fix_label)
+                dice = self.dice_val_VOI(warped_seg, fix_label, dice_labels)
                 return dice
             else:
                 return flow
