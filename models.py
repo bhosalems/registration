@@ -221,19 +221,19 @@ class RegNet(nn.Module):
             sloss = sim_loss
             
             if eval:
-                # dice = self.eval_dice(fix_label, moving_label, flow)
-                warped_seg = self.spatial_transformer_network(moving_label, flow)
+                dice = self.eval_dice(fix_label, moving_label, flow)
+                # warped_seg = self.spatial_transformer_network(moving_label, flow)
                 # warped_seg = torch.max(warped_seg.detach(),dim=1)[1]
-                dice  = self.dice_val_VOI(warped_seg, fix_label, dice_labels)
+                # dice  = self.dice_val_VOI(warped_seg, fix_label, dice_labels)
                 return sloss, grad_loss, dice
             else:
                 return sloss, grad_loss
         else:
             if eval:
-                # dice = self.eval_dice(fix_label, moving_label, flow)
-                warped_seg = self.spatial_transformer_network(moving_label, flow)
+                dice = self.eval_dice(fix_label, moving_label, flow)
+                # warped_seg = self.spatial_transformer_network(moving_label, flow)
                 # warped_seg = torch.max(warped_seg.detach(),dim=1)[1]
-                dice = self.dice_val_VOI(warped_seg, fix_label, dice_labels)
+                # dice = self.dice_val_VOI(warped_seg, fix_label, dice_labels)
                 return dice
             else:
                 return flow

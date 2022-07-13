@@ -54,11 +54,10 @@ class TrainModel():
         # moving = torch.unsqueeze(moving, 1).float().cuda()
 
         # Mahesh : Why do we need to permute here, Is it okay if we do not onehot code?
-        fixed_label = fixed_label.float().cuda()
-        # fixed_label = torch.nn.functional.one_hot(fixed_label.long(), num_classes=self.n_class).float()
-        # fixed_label = fixed_label.permute(0, 4, 1, 2, 3)
-        moving_label = moving_label.float().cuda()
-        # moving_label = torch.nn.functional.one_hot(moving_label.long(), num_classes=self.n_class).float().permute(0,4,1,2,3)
+        # fixed_label = fixed_label.float().cuda()
+        fixed_label = torch.nn.functional.one_hot(fixed_label.long(), num_classes=self.n_class).float().permute(0, 4, 1, 2, 3).cuda()
+        # moving_label = moving_label.float().cuda()
+        moving_label = torch.nn.functional.one_hot(moving_label.long(), num_classes=self.n_class).float().permute(0, 4, 1, 2, 3).cuda()
         if fixed_nopad is not None:
             fixed_nopad = fixed_nopad.float().cuda()[:, None]
         return fixed, fixed_label, moving, moving_label, fixed_nopad
@@ -172,4 +171,4 @@ class TrainUncertModel(TrainModel):
             logging.info(f'loss={loss.item()}, dice={dice.item()}')
         if self.tb is not None:
             self.tb.add_scalar("train/loss", loss.item(), self.global_idx)
-        return loss,dice
+        return loss, dice
