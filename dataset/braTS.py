@@ -39,7 +39,7 @@ class BraTSDataset(Dataset):
                     self.fiximg= torch.from_numpy(self.fiximg)
                 if self.seg in f:
                     self.fixseg = self.preprocess_seg(f'{self.datapath}/fix/{fixpath}/{f}')
-                    self.fixseg = self.fixseg[None, ...]
+                    # self.fixseg = self.fixseg[None, ...]
                     self.fixseg = np.ascontiguousarray(self.fixseg)
                     self.fixseg = torch.from_numpy(self.fixseg)
         
@@ -61,7 +61,7 @@ class BraTSDataset(Dataset):
     def __getitem__(self, idx):
         image = self.preprocess_img(self.imgpath[idx])
         seg = self.preprocess_seg(self.segpath[idx])
-        image, seg = image[None, ...], seg[None, ...]
+        image = image[None, ...]
         image = np.ascontiguousarray(image)
         seg = np.ascontiguousarray(seg)
         image, seg = torch.from_numpy(image), torch.from_numpy(seg)
@@ -104,8 +104,9 @@ class BraTSDataset(Dataset):
         data = center_crop(data, [240, 240, 144])
         n_class = len(self.labels)
         seg = np.zeros_like(data)
-        for n,label in enumerate(self.labels):
-            newlabel = n+1
+        mapping = {0:1, 1:2, 2:3, 4:4}
+        for _,label in enumerate(self.labels):
+            newlabel = mapping[label]
             seg[data==label] = newlabel
         return seg
 
