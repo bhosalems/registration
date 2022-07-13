@@ -57,7 +57,7 @@ if __name__ == "__main__":
     
     handlers = [logging.StreamHandler()]
     if args.debug:
-        logfile = f'debug'
+        logfile = f'debug_071322'
     else:
         logfile = f'{args.logfile}-{datetime.now().strftime("%m%d%H%M")}'
     handlers.append(logging.FileHandler(
@@ -95,7 +95,8 @@ if __name__ == "__main__":
         train_dataloader, test_dataloader = brats.braTS_dataloader(root_path=BraTS_PATH, save_path = BraTS_save_PATH, bsize=args.bsize, mod=args.modality)
         pad_size = [240, 240, 155]
         window_r = 7
-        NUM_CLASS = 4
+        # Should the mumber of classes be one more than total number of classes? As required for some of the l
+        NUM_CLASS = 5
 
     ##BUILD MODEL##
     model = RegNet(pad_size, winsize=window_r, dim=3, n_class=NUM_CLASS).cuda()
@@ -117,7 +118,9 @@ if __name__ == "__main__":
         writer_comment = f'{args.logfile}'#'_'.join(['vm','un'+str(args.uncert), str(args.weight), args.logfile]) 
         tb = SummaryWriter(comment = writer_comment)
     else:
-        tb = None
+        print('Creating the tensorborad file here')
+        writer_comment = './logs/tb'#'_'.join(['vm','un'+str(args.uncert), str(args.weight), args.logfile]) 
+        tb = SummaryWriter(comment = writer_comment)
 
     train = TrainModel(model, train_dataloader, test_dataloader, args, NUM_CLASS, tb=tb)
     train.run()
