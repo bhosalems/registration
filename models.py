@@ -75,7 +75,7 @@ class unet_core(nn.Module):
         for i in range(len(enc_nf)):
             prev_nf = input_ch if i == 0 else enc_nf[i-1]
             self.enc.append(conv_block(dim, prev_nf, enc_nf[i], 2))
-            # Mahesh Why the drouput is zero here and in the decoder, the dropout 
+            # Mahesh : Q. Why the drouput is zero here and in the decoder, the dropout >> Not required here, as original voxelmorph doesnt have it. 
             self.enc.append(nn.Dropout(0))
         # self.drop = nn.Dropout(droprate)
 
@@ -154,10 +154,7 @@ class RegNet(nn.Module):
         else:
             conv_fn = nn.Conv2d
         self.conv = conv_fn(dec_nf[-1], dim, kernel_size = 3, stride = 1, padding = 1)
-        # TODO Temporarily change the size for Brats dataset, there no way to change this if we use centr crop
-        # Need to incorporate this.
-        self.spatial_transformer_network = SpatialTransformer([240, 240, 144])
-        # self.spatial_transformer_network = SpatialTransformer(size)
+        self.spatial_transformer_network = SpatialTransformer(size)
 
         self.winsize = winsize
         self.n_class = n_class
@@ -172,6 +169,7 @@ class RegNet(nn.Module):
         if fix_nopad is not None:
             fixed_label = fix_nopad*fixed_label
             moving_label = fix_nopad*moving_label
+        # Mahesh : Q. Shouldn't there be argmax() here instead of max()?
         warplabel = torch.max(warped_seg.detach(),dim=1)[1]
         warpseg = torch.nn.functional.one_hot(warplabel.long(), num_classes=self.n_class).float().permute(0,4,1,2,3)
         dice = dice_onehot(warpseg[:,1:,:,:,:].detach(), fixed_label[:,1:,:,:,:].detach())#disregard background
@@ -185,6 +183,9 @@ class RegNet(nn.Module):
         DSCs = np.zeros((len(VOI_lbls), 1))
         idx = 0
         for i in VOI_lbls:
+            # Ignore the background
+            if i == 0:
+                continue
             pred_i = pred == i
             true_i = true == i
             intersection = pred_i * true_i
@@ -225,6 +226,7 @@ class RegNet(nn.Module):
                 # warped_seg = self.spatial_transformer_network(moving_label, flow)
                 # warped_seg = torch.max(warped_seg.detach(),dim=1)[1]
                 # dice  = self.dice_val_VOI(warped_seg, fix_label, dice_labels)
+                # logging.info(f'eval_dice : {e_dice} dice : {dice}')
                 return sloss, grad_loss, dice
             else:
                 return sloss, grad_loss
@@ -234,6 +236,7 @@ class RegNet(nn.Module):
                 # warped_seg = self.spatial_transformer_network(moving_label, flow)
                 # warped_seg = torch.max(warped_seg.detach(),dim=1)[1]
                 # dice = self.dice_val_VOI(warped_seg, fix_label, dice_labels)
+                # logging.info(f'eval_dice : {e_dice} dice : {dice}')
                 return dice
             else:
                 return flow

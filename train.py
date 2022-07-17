@@ -47,16 +47,14 @@ class TrainModel():
             fixed, fixed_label, fixed_nopad, moving, moving_label = samples
         fixed = fixed.float().cuda()
         moving = moving.float().cuda()
-        # Mahesh : Why do we need to add extra dimension at the very outside, is that for the batchsize?
-        # moving = torch.unsqueeze(moving, 1).float().cuda()
-        #
-        # fixed = torch.unsqueeze(fixed, 1).float().cuda()
-        # moving = torch.unsqueeze(moving, 1).float().cuda()
+        # Mahesh : Q. Why we need to unsqeeze? >> Make depth as second dimension for conv
+        moving = torch.unsqueeze(moving, 1).float().cuda()
+        fixed = torch.unsqueeze(fixed, 1).float().cuda()
+        # moving_label = torch.unsqueeze(moving_label, 1).float().cuda()
+        # fixed_label = torch.unsqueeze(fixed_label, 1).float().cuda()
 
-        # Mahesh : Why do we need to permute here, Is it okay if we do not onehot code?
-        # fixed_label = fixed_label.float().cuda()
+        # Mahesh : Q. Why do we need to permute here, Is it okay if we do not onehot code? >> To make the class/label dimension second dimension, likely required by the loss.
         fixed_label = torch.nn.functional.one_hot(fixed_label.long(), num_classes=self.n_class).float().permute(0, 4, 1, 2, 3).cuda()
-        # moving_label = moving_label.float().cuda()
         moving_label = torch.nn.functional.one_hot(moving_label.long(), num_classes=self.n_class).float().permute(0, 4, 1, 2, 3).cuda()
         if fixed_nopad is not None:
             fixed_nopad = fixed_nopad.float().cuda()[:, None]

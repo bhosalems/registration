@@ -5,6 +5,7 @@ import random
 import numpy as np
 import nibabel
 import torch
+import math
 
 def center_crop(x,size):
     ori_size=x.shape
@@ -13,7 +14,7 @@ def center_crop(x,size):
     return y
 
 class BraTSDataset(Dataset):
-    def __init__(self, data_path, mod, seg='seg', size=[240, 240, 155]):
+    def __init__(self, data_path, mod, seg='seg', size=[240, 240, 155], downsample_rate=16):
         """ Dataset for https://www.med.upenn.edu/sbia/brats2018/data.html 
 
         Args:
@@ -28,13 +29,14 @@ class BraTSDataset(Dataset):
         self.seg = seg
         self.labels = [0, 1, 2, 4]
         self.dice_labels = self.labels
+        self.downsample_rate = downsample_rate
 
         # fix
         for fixpath in os.listdir(f'{self.datapath}/fix'):
             for f in os.listdir(f'{self.datapath}/fix/{fixpath}'):
                 if self.mod in f:
-                    self.fiximg = self.preprocess_img(f'{self.datapath}/fix/{fixpath}/{f}')
-                    self.fiximg = self.fiximg[None, ...]
+                    self.fiximg , _= self.preprocess_img(f'{self.datapath}/fix/{fixpath}/{f}')
+                    # self.fiximg = self.fiximg[None, ...]
                     self.fiximg = np.ascontiguousarray(self.fiximg)
                     self.fiximg= torch.from_numpy(self.fiximg)
                 if self.seg in f:
@@ -59,16 +61,21 @@ class BraTSDataset(Dataset):
                     self.segpath.append(segpath)
     
     def __getitem__(self, idx):
-        image = self.preprocess_img(self.imgpath[idx])
+        image, fixed_nopad = self.preprocess_img(self.imgpath[idx])
         seg = self.preprocess_seg(self.segpath[idx])
-        image = image[None, ...]
-        image = np.ascontiguousarray(image)
-        seg = np.ascontiguousarray(seg)
-        image, seg = torch.from_numpy(image), torch.from_numpy(seg)
+        # image = image[None, ...]        
         return self.fiximg, self.fixseg, image, seg 
     
     def __len__(self):
-        return len(self.imgpath) 
+        return len(self.imgpath)
+    
+    def zero_pad(self, data, value=0):
+        orig_size = data.shape
+        c_dim = orig_size[-1]
+        pad_sz = abs(c_dim - (math.ceil(c_dim/self.downsample_rate)*self.downsample_rate))
+        data = torch.nn.functional.pad(data, (math.floor(pad_sz/2), math.ceil(pad_sz/2)), value=0)
+        assert(data.shape[-1]%self.downsample_rate==0)
+        return data
         
     def preprocess_img(self, name):
         """Reads and preprocesses the image. First crop at centre, then clip the image in range 
@@ -81,10 +88,8 @@ class BraTSDataset(Dataset):
             array: Preprocesses image array
         """
         data = np.array(nibabel.load(name).get_fdata())
-        # crop
-        # TODO what should be the size of the image when cropping.
-        data = center_crop(data, [240, 240, 144])
-        self.size = [240, 240, 144]
+        fixed_nopad = None
+
         #normalize
         mean = np.mean(data)
         std = np.std(data, ddof=1)
@@ -93,21 +98,35 @@ class BraTSDataset(Dataset):
         minp = mean - 6*std
         y = np.clip(data, minp, maxp)
         #import ipdb; ipdb.set_trace()
+
         #linear transform to [0,1]
         z = (y-y.min())/y.max()
-        return z
+        z = np.ascontiguousarray(z)
+        z = torch.from_numpy(z)
+
+        # Add the padding if required
+        if z.shape[-1]%self.downsample_rate != 0:
+            fixed_nopad = torch.ones(z.shape)
+            z = self.zero_pad(z)
+            fixed_nopad = self.zero_pad(fixed_nopad)
+            self.size = z.shape
+        return z, fixed_nopad
 
     def preprocess_seg(self, name):
         data = np.array(nibabel.load(name).get_fdata())
-        # crop
-        # TODO what should be the size of the segmentation when cropping.
-        data = center_crop(data, [240, 240, 144])
         n_class = len(self.labels)
         seg = np.zeros_like(data)
-        mapping = {0:1, 1:2, 2:3, 4:4}
+        mapping = {0:0, 1:1, 2:2, 4:3}
         for _,label in enumerate(self.labels):
             newlabel = mapping[label]
             seg[data==label] = newlabel
+        
+        seg = np.ascontiguousarray(seg)
+        seg = torch.from_numpy(seg)
+        
+        # Add the padding if required
+        if seg.shape[-1]%self.downsample_rate != 0:
+            seg = self.zero_pad(seg)
         return seg
 
 
@@ -171,7 +190,6 @@ if __name__ == "__main__":
     root_path = "/data_local/xuangong/data/BraTS/BraTS2018"
     save_path = "/home/csgrad/mbhosale/Image_registration/datasets/BraTS2018/"
 
-    # Todo : Only dummy size, need to define this later after checking
     pad_size = [240, 240, 155]
     mod = "flair"
     bsize = 1
