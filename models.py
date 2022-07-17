@@ -216,13 +216,13 @@ class RegNet(nn.Module):
             # sim_loss = vxvm_ncc(y_true=fix, y_pred=warp, win=[self.winsize, self.winsize, self.winsize])
             # tmp_sim, tmp_mask = ncc_loss(warp, fix, reduce_mean=False, winsize=self.winsize) #[0,1]
             grad_loss = gradient_loss(flow, keepdim=False).mean()
-            # if fix_nopad is not None:
-                # mask = fix_nopad.bool()
-                # sim_mask = sim_mask*mask
+            if fix_nopad is not None:
+                mask = fix_nopad.bool()
+                sim_mask = sim_mask*mask
             sloss = sim_loss
             
             if eval:
-                dice = self.eval_dice(fix_label, moving_label, flow)
+                dice = self.eval_dice(fix_label, moving_label, flow, fix_nopad)
                 # warped_seg = self.spatial_transformer_network(moving_label, flow)
                 # warped_seg = torch.max(warped_seg.detach(),dim=1)[1]
                 # dice  = self.dice_val_VOI(warped_seg, fix_label, dice_labels)
@@ -232,7 +232,7 @@ class RegNet(nn.Module):
                 return sloss, grad_loss
         else:
             if eval:
-                dice = self.eval_dice(fix_label, moving_label, flow)
+                dice = self.eval_dice(fix_label, moving_label, flow, fix_nopad)
                 # warped_seg = self.spatial_transformer_network(moving_label, flow)
                 # warped_seg = torch.max(warped_seg.detach(),dim=1)[1]
                 # dice = self.dice_val_VOI(warped_seg, fix_label, dice_labels)

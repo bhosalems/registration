@@ -41,8 +41,7 @@ class TrainModel():
 
     def data_extract(self, samples):
         if len(samples)==4:
-            fixed, fixed_label, moving, moving_label = samples
-            fixed_nopad = None
+            fixed, fixed_label, fixed_nopad, moving, moving_label = samples
         elif len(samples)==5:
             fixed, fixed_label, fixed_nopad, moving, moving_label = samples
         fixed = fixed.float().cuda()

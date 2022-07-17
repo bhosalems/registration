@@ -64,7 +64,7 @@ class BraTSDataset(Dataset):
         image, fixed_nopad = self.preprocess_img(self.imgpath[idx])
         seg = self.preprocess_seg(self.segpath[idx])
         # image = image[None, ...]        
-        return self.fiximg, self.fixseg, image, seg 
+        return self.fiximg, self.fixseg, fixed_nopad, image, seg 
     
     def __len__(self):
         return len(self.imgpath)
