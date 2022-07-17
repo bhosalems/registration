@@ -30,7 +30,8 @@ class IXIBrainDataset(Dataset):
         #print(np.unique(y))
         # print(x.shape, y.shape)#(240, 240, 155) (240, 240, 155)
         # transforms work with nhwtc
-        # Mahesh -- Why they have increased the domension here?
+        # Mahesh : Q. Why they have increased the domension here? >> To add Batch size as first dimension and 
+        # channel as second dimension, which also is one beacsue the data is gray scale.
         x, y = x[None, ...], y[None, ...]
         x_seg, y_seg = x_seg[None, ...], y_seg[None, ...]
         # print(x.shape, y.shape)#(1, 240, 240, 155) (1, 240, 240, 155)
@@ -76,7 +77,8 @@ class IXIBrainInferDataset(Dataset):
         path = self.paths[index]
         x, x_seg = data_utils.pkload(self.atlas_path)
         y, y_seg = data_utils.pkload(path)
-        # Mahesh Why did they increase the dimension here?
+        # Mahesh : Q. Why they have increased the domension here? >> To add Batch size as first dimension and 
+        # channel as second dimension, which also is one beacsue the data is gray scale.
         x, y = x[None, ...], y[None, ...]
         x_seg, y_seg = x_seg[None, ...], y_seg[None, ...]
         # x, x_seg = self.transforms([x, x_seg])
