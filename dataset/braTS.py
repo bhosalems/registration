@@ -799,7 +799,7 @@ if __name__ == "__main__":
     bsize = 1
 
     # Need to call data_split only once for train as well as validation at first.
-    train_dataloader, test_dataloader = braTS_dataloader(root_path, save_path, bsize, mod, augment=True)
+    train_dataloader, test_dataloader = braTS_dataloader(root_path, save_path, bsize, mod, augment=False)
 
     for _, samples in enumerate(train_dataloader):
         print(samples.shape)
