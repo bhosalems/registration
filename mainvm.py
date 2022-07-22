@@ -32,7 +32,7 @@ def get_args():
     parser.add_argument('--dataset', type=str, default='CANDI', help='CANDI, prostate, IXI')
     parser.add_argument('--lr', type=float, default=1e-4, help='Initial learning rate')
     parser.add_argument('--weightdecay', type=float, default=0, help='Weightdecay')
-    parser.add_argument('--epoch', type=int, default = 1, help = "Max Epoch")
+    parser.add_argument('--epoch', type=int, default = 500, help = "Max Epoch")
     parser.add_argument('--bsize', type=int, default=2, help='Batch size') 
     parser.add_argument('--num_workers', type=int, default=4)
     # parser.add_argument('--savefrequency', type=int, default=1, help='savefrequency')
@@ -57,7 +57,7 @@ if __name__ == "__main__":
     
     handlers = [logging.StreamHandler()]
     if args.debug:
-        logfile = f'debug_071522'
+        logfile = f'debug_072122_tmp'
     else:
         logfile = f'{args.logfile}-{datetime.now().strftime("%m%d%H%M")}'
     handlers.append(logging.FileHandler(
@@ -93,7 +93,8 @@ if __name__ == "__main__":
         NUM_CLASS = 46
     elif args.dataset == 'BraTS':
         pad_size = [240, 240, 155]
-        train_dataloader, test_dataloader = brats.braTS_dataloader(root_path=BraTS_PATH, save_path = BraTS_save_PATH, bsize=args.bsize, mod=args.modality)
+        train_dataloader, test_dataloader = brats.braTS_dataloader(root_path=BraTS_PATH, save_path = BraTS_save_PATH, 
+                                                                   bsize=args.bsize, mod=args.modality, augment=True)
         pad_size = train_dataloader.dataset.size        
         window_r = 7
         # TODO Should the mumber of classes be one more than total number of classes? As required for some of the loss functions etc.
