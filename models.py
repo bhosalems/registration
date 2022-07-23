@@ -167,9 +167,8 @@ class RegNet(nn.Module):
         warped_seg= self.spatial_transformer_network(moving_label, flow)
         #
         if fix_nopad is not None:
-            fixed_label = fix_nopad*fixed_label
             moving_label = fix_nopad*moving_label
-        # Mahesh : Q. Shouldn't there be argmax() here instead of max()?
+        # Mahesh : Q. Shouldn't there be argmax() here instead of max()? >> No it actually is taking indices by taking torch.max(...)[1].
         warplabel = torch.max(warped_seg.detach(),dim=1)[1]
         warpseg = torch.nn.functional.one_hot(warplabel.long(), num_classes=self.n_class).float().permute(0,4,1,2,3)
         dice = dice_onehot(warpseg[:,1:,:,:,:].detach(), fixed_label[:,1:,:,:,:].detach())#disregard background
@@ -192,7 +191,7 @@ class RegNet(nn.Module):
             intersection = np.sum(intersection)
             union = np.sum(pred_i) + np.sum(true_i)
             dsc = (2.*intersection) / (union + 1e-5)
-            DSCs[idx] =dsc
+            DSCs[idx] = dsc
             idx += 1
         return np.mean(DSCs)
 
@@ -201,6 +200,8 @@ class RegNet(nn.Module):
     def forward(self, fix, moving, fix_label, moving_label, fix_nopad=None, rtloss=True, eval=True, dice_labels=[0, 1, 2, 4]):
         x = torch.cat([moving,fix], dim = 1)
         unet_out = self.unet(x)
+        # Mahesh : Q. Output of the displacement flow here is [1, Number of channels, height, width, depth], 
+        # but our labels as well as moving has a single channel, should this be an issue? Check the transmorph code here.
         flow = self.conv(unet_out)
 
         if rtloss:

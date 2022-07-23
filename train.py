@@ -46,17 +46,19 @@ class TrainModel():
             fixed, fixed_label, fixed_nopad, moving, moving_label = samples
         fixed = fixed.float().cuda()
         moving = moving.float().cuda()
-        # Mahesh : Q. Why we need to unsqeeze? >> Make depth as second dimension for conv
+        # Mahesh : Q. Why we need to unsqeeze? >> Make depth/channel as second dimension for conv, i.e. our volume is gray sclae, so it's 1.
         moving = torch.unsqueeze(moving, 1).float().cuda()
         fixed = torch.unsqueeze(fixed, 1).float().cuda()
-        # moving_label = torch.unsqueeze(moving_label, 1).float().cuda()
+        moving_label = torch.unsqueeze(moving_label, 1).float().cuda()
         # fixed_label = torch.unsqueeze(fixed_label, 1).float().cuda()
-
+        
+        if fixed_nopad is not None:
+            fixed_label = fixed_nopad * fixed_label
+            fixed_nopad = fixed_nopad.float().cuda()[:, None]
+        
         # Mahesh : Q. Why do we need to permute here, Is it okay if we do not onehot code? >> To make the class/label dimension second dimension, likely required by the loss.
         fixed_label = torch.nn.functional.one_hot(fixed_label.long(), num_classes=self.n_class).float().permute(0, 4, 1, 2, 3).cuda()
-        moving_label = torch.nn.functional.one_hot(moving_label.long(), num_classes=self.n_class).float().permute(0, 4, 1, 2, 3).cuda()
-        if fixed_nopad is not None:
-            fixed_nopad = fixed_nopad.float().cuda()[:, None]
+        # moving_label = torch.nn.functional.one_hot(moving_label.long(), num_classes=self.n_class).float().permute(0, 4, 1, 2, 3).cuda()
         return fixed, fixed_label, moving, moving_label, fixed_nopad
 
     def test(self, epoch):

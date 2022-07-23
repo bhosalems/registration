@@ -57,7 +57,7 @@ if __name__ == "__main__":
     
     handlers = [logging.StreamHandler()]
     if args.debug:
-        logfile = f'debug_072122_tmp'
+        logfile = f'debug_072222_transmorph_dice'
     else:
         logfile = f'{args.logfile}-{datetime.now().strftime("%m%d%H%M")}'
     handlers.append(logging.FileHandler(
@@ -94,14 +94,16 @@ if __name__ == "__main__":
     elif args.dataset == 'BraTS':
         pad_size = [240, 240, 155]
         train_dataloader, test_dataloader = brats.braTS_dataloader(root_path=BraTS_PATH, save_path = BraTS_save_PATH, 
-                                                                   bsize=args.bsize, mod=args.modality, augment=True)
+                                                                   bsize=args.bsize, mod=args.modality, augment=False)
         pad_size = train_dataloader.dataset.size        
         window_r = 7
-        # TODO Should the mumber of classes be one more than total number of classes? As required for some of the loss functions etc.
+        # Mahesh : Should the mumber of classes be one more than total number of classes? As required for some of the loss functions etc. >> No Need, 
+        # we are not using any other loss function such as cross entropy loss which takes in number of classes as an arguemnt.
         NUM_CLASS = 4
 
     ##BUILD MODEL##
     model = RegNet(pad_size, winsize=window_r, dim=3, n_class=NUM_CLASS).cuda()
+    
     if len(gpu)>1:
         model = torch.nn.DataParallel(model, device_ids=gpu)
     #model = nn.DataParallel(model, device_ids=gpu).to(device)
