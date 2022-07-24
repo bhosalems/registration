@@ -164,18 +164,26 @@ class RegNet(nn.Module):
         # self.drop = nn.Dropout(droprate)
 
     def eval_dice(self, fixed_label, moving_label, flow, fix_nopad=None):
-        warped_seg= self.spatial_transformer_network(moving_label, flow)
-        #
         if fix_nopad is not None:
-            moving_label = fix_nopad*moving_label
+            moving_label = fix_nopad * moving_label
+
+        warplabel = self.spatial_transformer_network(moving_label, flow)
         # Mahesh : Q. Shouldn't there be argmax() here instead of max()? >> No it actually is taking indices by taking torch.max(...)[1].
-        warplabel = torch.max(warped_seg.detach(),dim=1)[1]
+        # Mahesh : Q. Not sure if taking max here is really required ? Ourwarped seg just gived us the single value or score, so max will always be zero here. 
+        # Is this the error we are experiencing?
+        # warplabel = torch.max(warped_seg.detach(),dim=1)[1]
+        warplabel = warplabel.squeeze(0)
+        torch.save(warplabel, 'warplabel.pt')
         warpseg = torch.nn.functional.one_hot(warplabel.long(), num_classes=self.n_class).float().permute(0,4,1,2,3)
         dice = dice_onehot(warpseg[:,1:,:,:,:].detach(), fixed_label[:,1:,:,:,:].detach())#disregard background
         return dice
     
-    def dice_val_VOI(self, y_pred, y_true, dice_labels): 
-        # Mahesh - Only checks the segmentation DICE of below lables, not all.       
+    def dice_val_VOI(self, fix_nopad, y_pred, y_true, dice_labels): 
+        # Mahesh - Only checks the segmentation DICE of below lables, not all.
+        if fix_nopad is not None:
+            y_pred = fix_nopad * y_pred
+            y_true = y_true * fix_nopad
+              
         VOI_lbls = dice_labels
         pred = y_pred.detach().cpu().numpy()[0, 0, ...]
         true = y_true.detach().cpu().numpy()[0, 0, ...]
@@ -226,7 +234,7 @@ class RegNet(nn.Module):
                 dice = self.eval_dice(fix_label, moving_label, flow, fix_nopad)
                 # warped_seg = self.spatial_transformer_network(moving_label, flow)
                 # warped_seg = torch.max(warped_seg.detach(),dim=1)[1]
-                # dice  = self.dice_val_VOI(warped_seg, fix_label, dice_labels)
+                # dice  = self.dice_val_VOI(fix_nopad, warped_seg, fix_label, dice_labels)
                 # logging.info(f'eval_dice : {e_dice} dice : {dice}')
                 return sloss, grad_loss, dice
             else:
@@ -236,7 +244,7 @@ class RegNet(nn.Module):
                 dice = self.eval_dice(fix_label, moving_label, flow, fix_nopad)
                 # warped_seg = self.spatial_transformer_network(moving_label, flow)
                 # warped_seg = torch.max(warped_seg.detach(),dim=1)[1]
-                # dice = self.dice_val_VOI(warped_seg, fix_label, dice_labels)
+                # dice = self.dice_val_VOI(fix_nopad, warped_seg, fix_label, dice_labels)
                 # logging.info(f'eval_dice : {e_dice} dice : {dice}')
                 return dice
             else:

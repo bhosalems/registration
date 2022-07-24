@@ -44,8 +44,8 @@ class TrainModel():
             fixed, fixed_label, fixed_nopad, moving, moving_label = samples
         elif len(samples)==5:
             fixed, fixed_label, fixed_nopad, moving, moving_label = samples
-        fixed = fixed.float().cuda()
-        moving = moving.float().cuda()
+        # fixed = fixed.float().cuda()
+        # moving = moving.float().cuda()
         # Mahesh : Q. Why we need to unsqeeze? >> Make depth/channel as second dimension for conv, i.e. our volume is gray sclae, so it's 1.
         moving = torch.unsqueeze(moving, 1).float().cuda()
         fixed = torch.unsqueeze(fixed, 1).float().cuda()
