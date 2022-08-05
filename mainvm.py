@@ -14,6 +14,7 @@ import dataset.candi as candi
 import dataset.msd as msd
 import dataset.ixi as ixi
 import dataset.braTS as brats
+import dataset.chaos as chaos
 from torch.optim.lr_scheduler import StepLR
 from train import TrainModel
 from models import RegNet
@@ -23,6 +24,7 @@ MSD_PATH = r'C:\Users\mahes\Desktop\UB\Thesis\Img registration\registration\data
 IXI_PATH = r'/home/csgrad/mbhosale/Image_registration/TransMorph_Transformer_for_Medical_Image_Registration/IXI/IXI_data/'
 BraTS_PATH = r'/home/csgrad/mbhosale/Image_registration/datasets/BraTS2018'
 BraTS_save_PATH = r'/home/csgrad/mbhosale/Image_registration/datasets/BraTS2018/'
+CHAOS_PATH = r'/data_local/mbhosale/CHAOS/'
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -57,7 +59,7 @@ if __name__ == "__main__":
     
     handlers = [logging.StreamHandler()]
     if args.debug:
-        logfile = f'debug_072422_xuan_dice'
+        logfile = f'debug_072622_xuan_dice_test'
     else:
         logfile = f'{args.logfile}-{datetime.now().strftime("%m%d%H%M")}'
     handlers.append(logging.FileHandler(
@@ -95,6 +97,16 @@ if __name__ == "__main__":
         pad_size = [240, 240, 155]
         train_dataloader, test_dataloader = brats.braTS_dataloader(root_path=BraTS_PATH, save_path = BraTS_save_PATH, 
                                                                    bsize=args.bsize, mod=args.modality, augment=False)
+        pad_size = train_dataloader.dataset.size        
+        window_r = 7
+        # Mahesh : Should the mumber of classes be one more than total number of classes? As required for some of the loss functions etc. >> No Need, 
+        # we are not using any other loss function such as cross entropy loss which takes in number of classes as an arguemnt.
+        NUM_CLASS = 4
+    elif args.dataset == 'CHAOS':
+        pad_size = [400, 400, 50]
+        train_dataloader, test_dataloader = chaos.Chaos_dataloader(root_path=CHAOS_PATH, bsize=1, 
+                                                         modality='T1DUAL', phase='InPhase', size=pad_size, 
+                                                         data_split=False, n_fix=1)
         pad_size = train_dataloader.dataset.size        
         window_r = 7
         # Mahesh : Should the mumber of classes be one more than total number of classes? As required for some of the loss functions etc. >> No Need, 
