@@ -3,7 +3,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as nnf
 from losses import *
-import logging
+import matplotlib.pyplot as plt
+import warnings
+warnings.simplefilter('error', UserWarning)
 
 class SpatialTransformer(nn.Module):
     def __init__(self, size, mode='bilinear'):
@@ -17,6 +19,50 @@ class SpatialTransformer(nn.Module):
         new_locs = self.meshgrid + flow
         self.new_locs = new_locs
         return nnf.grid_sample(src, new_locs, mode=self.mode, align_corners=False)
+
+# class SpatialTransformer(nn.Module):
+#     """
+#     N-D Spatial Transformer
+#     """
+
+#     def __init__(self, size, mode='bilinear'):
+#         super().__init__()
+
+#         self.mode = mode
+
+#         # create sampling grid
+#         vectors = [torch.arange(0, s) for s in size]
+#         grids = torch.meshgrid(vectors)
+#         grid = torch.stack(grids)
+#         grid = torch.unsqueeze(grid, 0)
+#         grid = grid.type(torch.FloatTensor)
+
+#         # registering the grid as a buffer cleanly moves it to the GPU, but it also
+#         # adds it to the state dict. this is annoying since everything in the state dict
+#         # is included when saving weights to disk, so the model files are way bigger
+#         # than they need to be. so far, there does not appear to be an elegant solution.
+#         # see: https://discuss.pytorch.org/t/how-to-register-buffer-without-polluting-state-dict
+#         self.register_buffer('grid', grid)
+
+#     def forward(self, src, flow):
+#         # new locations
+#         new_locs = self.grid + flow
+#         shape = flow.shape[2:]
+
+#         # need to normalize grid values to [-1, 1] for resampler
+#         for i in range(len(shape)):
+#             new_locs[:, i, ...] = 2 * (new_locs[:, i, ...] / (shape[i] - 1) - 0.5)
+
+#         # move channels dim to last position
+#         # also not sure why, but the channels need to be reversed
+#         if len(shape) == 2:
+#             new_locs = new_locs.permute(0, 2, 3, 1)
+#             new_locs = new_locs[..., [1, 0]]
+#         elif len(shape) == 3:
+#             new_locs = new_locs.permute(0, 2, 3, 4, 1)
+#             new_locs = new_locs[..., [2, 1, 0]]
+
+#         return nnf.grid_sample(src, new_locs, align_corners=True, mode=self.mode)
 
 class conv_block(nn.Module):
     """
@@ -163,33 +209,57 @@ class RegNet(nn.Module):
         # self.softmax = nn.Softmax(dim=1)
         # self.drop = nn.Dropout(droprate)
 
-    def eval_dice(self, fixed_label, moving_label, flow, fix_nopad=None):
-        if fix_nopad is not None:
-            moving_label = fix_nopad * moving_label
-
+    def eval_dice(self, fixed_label, moving_label, flow, fix_nopad=None, seg_fname=None):
         warplabel = self.spatial_transformer_network(moving_label, flow)
+        if fix_nopad is not None:
+            warplabel = fix_nopad * warplabel
         # Mahesh : Q. Shouldn't there be argmax() here instead of max()? >> No it actually is taking indices by taking torch.max(...)[1].
-        # Mahesh : Q. Not sure if taking max here is really required ? Ourwarped seg just gived us the single value or score, so max will always be zero here. 
+        # Mahesh : Q. Not sure if taking max here is really required ? Our warped seg just gives us the single value or score, so max will always be zero here. 
         # Is this the error we are experiencing?
         # warplabel = torch.max(warped_seg.detach(),dim=1)[1]
         warplabel = warplabel.squeeze(0)
-        torch.save(warplabel, 'warplabel.pt')
-        warpseg = torch.nn.functional.one_hot(warplabel.long(), num_classes=self.n_class).float().permute(0,4,1,2,3)
-        dice = dice_onehot(warpseg[:,1:,:,:,:].detach(), fixed_label[:,1:,:,:,:].detach())#disregard background
+        # torch.save(warplabel, 'warplabel.pt')
+        warpseg = torch.nn.functional.one_hot(warplabel.long(), num_classes=self.n_class).float().permute(0, 4, 1, 2, 3)
+        dice = dice_onehot(warpseg[:, 1:, :, :, :].detach(), fixed_label[:, 1:, :, :, :].detach())#disregard background
+        self.seg_imgs(warpseg, fixed_label, seg_fname, one_hot=True)
         return dice
-    
-    def dice_val_VOI(self, fix_nopad, y_pred, y_true, dice_labels): 
+
+    def seg_imgs(self, y_pred, y_true, fname, one_hot=False):
+        if one_hot:
+           y_pred = torch.max(y_pred.detach(),dim=1)[1]
+           y_pred = y_pred.unsqueeze(0)
+           y_true = torch.max(y_true.detach(),dim=1)[1]
+           y_true = y_true.unsqueeze(0)
+        fig_rows = 4
+        fig_cols = 4
+        n_subplots = fig_rows * fig_cols
+        n_slice = y_true.shape[4]
+        step_size = n_slice // n_subplots
+        plot_range = n_subplots * step_size
+        start_stop = int((n_slice - plot_range) / 2)
+        fig, axs = plt.subplots(fig_rows, fig_cols, figsize=[10, 10])
+        y_true = y_true.detach().cpu().numpy()[0, 0, ...]
+        y_pred = y_pred.detach().cpu().numpy()[0, 0, ...]
+        y_true[ y_true==0 ] = np.nan
+        for idx, img in enumerate(range(start_stop, plot_range, step_size)):
+            axs.flat[idx].imshow(y_true[:, :, img])
+            axs.flat[idx].imshow(y_pred[:, :, img], cmap='gray', alpha=0.8)
+            axs.flat[idx].axis('off')
+            
+        plt.tight_layout()
+        plt.savefig(fname)
+        plt.cla()
+        plt.close()
+        
+    def dice_val_VOI(self, y_pred, y_true, dice_labels, fix_nopad, seg_fname=None): 
         # Mahesh - Only checks the segmentation DICE of below lables, not all.
         if fix_nopad is not None:
             y_pred = fix_nopad * y_pred
-            y_true = y_true * fix_nopad
-              
-        VOI_lbls = dice_labels
         pred = y_pred.detach().cpu().numpy()[0, 0, ...]
         true = y_true.detach().cpu().numpy()[0, 0, ...]
-        DSCs = np.zeros((len(VOI_lbls), 1))
+        DSCs = np.zeros((len(dice_labels)-1, 1)) # ignore the background
         idx = 0
-        for i in VOI_lbls:
+        for i in dice_labels:
             # Ignore the background
             if i == 0:
                 continue
@@ -198,14 +268,19 @@ class RegNet(nn.Module):
             intersection = pred_i * true_i
             intersection = np.sum(intersection)
             union = np.sum(pred_i) + np.sum(true_i)
+            # print(intersection, union)
             dsc = (2.*intersection) / (union + 1e-5)
             DSCs[idx] = dsc
             idx += 1
-        return np.mean(DSCs)
+        mean_DSC = np.mean(DSCs)
+        if seg_fname is not None:
+            self.seg_imgs(y_pred, y_true, seg_fname+"iou"+str(mean_DSC*100)+".png")
+        return mean_DSC
 
 # By deafult we give dice labels of the BraTS datatset. If you are not one-hot encoding the dataset, you have to
 # use the labels for calculating the DICE scores.
-    def forward(self, fix, moving, fix_label, moving_label, fix_nopad=None, rtloss=True, eval=True, dice_labels=[0, 1, 2, 4]):
+    def forward(self, fix, moving, fix_label, moving_label, fix_nopad=None, rtloss=True, eval=True, dice_labels=[0, 1, 2, 4], 
+                seg_fname = None):
         x = torch.cat([moving,fix], dim = 1)
         unet_out = self.unet(x)
         # Mahesh : Q. Output of the displacement flow here is [1, Number of channels, height, width, depth], 
@@ -234,7 +309,7 @@ class RegNet(nn.Module):
                 dice = self.eval_dice(fix_label, moving_label, flow, fix_nopad)
                 # warped_seg = self.spatial_transformer_network(moving_label, flow)
                 # warped_seg = torch.max(warped_seg.detach(),dim=1)[1]
-                # dice  = self.dice_val_VOI(fix_nopad, warped_seg, fix_label, dice_labels)
+                # dice  = self.dice_val_VOI(warped_seg, fix_label, dice_labels, fix_nopad, seg_fname)
                 # logging.info(f'eval_dice : {e_dice} dice : {dice}')
                 return sloss, grad_loss, dice
             else:
@@ -244,7 +319,7 @@ class RegNet(nn.Module):
                 dice = self.eval_dice(fix_label, moving_label, flow, fix_nopad)
                 # warped_seg = self.spatial_transformer_network(moving_label, flow)
                 # warped_seg = torch.max(warped_seg.detach(),dim=1)[1]
-                # dice = self.dice_val_VOI(fix_nopad, warped_seg, fix_label, dice_labels)
+                # dice = self.dice_val_VOI(warped_seg, fix_label, dice_labels, fix_nopad, seg_fname)
                 # logging.info(f'eval_dice : {e_dice} dice : {dice}')
                 return dice
             else:
