@@ -438,7 +438,7 @@ class BraTSDataset(Dataset):
         self.augment = augment
         self.seg = seg
         self.labels = [0, 1, 2, 4]
-        self.dice_labels = self.labels
+        self.dice_labels = [0, 1, 2, 3]
         self.downsample_rate = downsample_rate
         self.feature_index = feature_index
         self.target_index = target_index
@@ -759,7 +759,8 @@ def datasplit(rdpath, savepth='/data_local/xuangong/data/BraTS/BraTS2018/new', n
         os.system(f'cp -r {source} {target}')
 
 
-def braTS_dataloader(root_path, save_path, bsize, mod, seg = "seg", size=[240, 240, 155], data_split=False, n_fix=1, num_workers = 4, augment=True):
+def braTS_dataloader(root_path, save_path, bsize, mod, seg = "seg", size=[240, 240, 155], data_split=False, 
+                     n_fix=1, num_workers = 4, augment=True):
     if(data_split):
         train_rootpath = root_path + '_Train'
         validation_rootpath = root_path + '_Validation'
