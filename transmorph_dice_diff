@@ -1,0 +1,92 @@
+diff --git a/dataset/candi.py b/dataset/candi.py
+index a943ff6..878e1a1 100644
+--- a/dataset/candi.py
++++ b/dataset/candi.py
+@@ -36,7 +36,6 @@ class CANDIDataset(Dataset):
+             self.imgpath.append(imgpath)
+             self.segpath.append(segpath)
+         
+-        
+     def __len__(self):
+         return len(self.imgpath) 
+ 
+diff --git a/mainvm.py b/mainvm.py
+index 6aa8a01..75ed910 100644
+--- a/mainvm.py
++++ b/mainvm.py
+@@ -61,7 +61,7 @@ if __name__ == "__main__":
+     
+     handlers = [logging.StreamHandler()]
+     if args.debug:
+-        logfile = f'debug_072622_xuan_dice_test'
++        logfile = f'debug_080622_tranmorph_dice_test'
+     else:
+         logfile = f'{args.logfile}-{datetime.now().strftime("%m%d%H%M")}'
+     handlers.append(logging.FileHandler(
+diff --git a/models.py b/models.py
+index edbef12..de7ebb0 100644
+--- a/models.py
++++ b/models.py
+@@ -309,20 +309,20 @@ class RegNet(nn.Module):
+             sloss = sim_loss
+             
+             if eval:
+-                dice = self.eval_dice(fix_label, moving_label, flow, fix_nopad, seg_fname=seg_fname)
+-                # warped_seg = self.spatial_transformer_network(moving_label, flow)
++                # dice = self.eval_dice(fix_label, moving_label, flow, fix_nopad, seg_fname=seg_fname)
++                warped_seg = self.spatial_transformer_network(moving_label, flow)
+                 # warped_seg = torch.max(warped_seg.detach(),dim=1)[1]
+-                # dice  = self.dice_val_VOI(warped_seg, fix_label, dice_labels, fix_nopad, seg_fname)
++                dice  = self.dice_val_VOI(warped_seg, fix_label, dice_labels, fix_nopad, seg_fname)
+                 # logging.info(f'eval_dice : {e_dice} dice : {dice}')
+                 return sloss, grad_loss, dice
+             else:
+                 return sloss, grad_loss
+         else:
+             if eval:
+-                dice = self.eval_dice(fix_label, moving_label, flow, fix_nopad, seg_fname=seg_fname)
+-                # warped_seg = self.spatial_transformer_network(moving_label, flow)
++                # dice = self.eval_dice(fix_label, moving_label, flow, fix_nopad, seg_fname=seg_fname)
++                warped_seg = self.spatial_transformer_network(moving_label, flow)
+                 # warped_seg = torch.max(warped_seg.detach(),dim=1)[1]
+-                # dice = self.dice_val_VOI(warped_seg, fix_label, dice_labels, fix_nopad, seg_fname)
++                dice = self.dice_val_VOI(warped_seg, fix_label, dice_labels, fix_nopad, seg_fname)
+                 # logging.info(f'eval_dice : {e_dice} dice : {dice}')
+                 return dice
+             else:
+diff --git a/train.py b/train.py
+index 5ed5d4b..5ac81cf 100644
+--- a/train.py
++++ b/train.py
+@@ -56,15 +56,15 @@ class TrainModel():
+         moving = torch.unsqueeze(moving, 1).float().cuda()
+         fixed = torch.unsqueeze(fixed, 1).float().cuda()
+         moving_label = torch.unsqueeze(moving_label, 1).float().cuda()
+-        # fixed_label = torch.unsqueeze(fixed_label, 1).float().cuda()
++        fixed_label = torch.unsqueeze(fixed_label, 1).float().cuda()
+         
+         if fixed_nopad is not None:
+-            fixed_label = fixed_nopad * fixed_label
+             # moving_label = fixed_nopad * moving_label
+             fixed_nopad = fixed_nopad.float().cuda()[:, None]
++            fixed_label = fixed_nopad * fixed_label
+         
+         # Mahesh : Q. Why do we need to permute here, Is it okay if we do not onehot code? >> To make the class/label dimension second dimension, likely required by the loss.
+-        fixed_label = torch.nn.functional.one_hot(fixed_label.long(), num_classes=self.n_class).float().permute(0, 4, 1, 2, 3).cuda()
++        # fixed_label = torch.nn.functional.one_hot(fixed_label.long(), num_classes=self.n_class).float().permute(0, 4, 1, 2, 3).cuda()
+         # moving_label = torch.nn.functional.one_hot(moving_label.long(), num_classes=self.n_class).float().permute(0, 4, 1, 2, 3).cuda()
+         return fixed, fixed_label, moving, moving_label, fixed_nopad
+ 
+diff --git a/uncert/train_regu.py b/uncert/train_regu.py
+index 504aec9..0e426d7 100644
+--- a/uncert/train_regu.py
++++ b/uncert/train_regu.py
+@@ -50,7 +50,7 @@ if __name__ == "__main__":
+     
+     handlers = [logging.StreamHandler()]
+     if args.debug:
+-        logfile = f'debug'
++        logfile = f'debug_071322'
+     else:
+         logfile = f'{args.logfile}-{datetime.now().strftime("%m%d%H%M")}'
+     handlers.append(logging.FileHandler(
