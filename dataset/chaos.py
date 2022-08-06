@@ -114,7 +114,7 @@ class ChaosDataset(Dataset):
         self.ext = ext
         self.label_ext = label_ext
         self.pad = pad
-        self.dice_labels = [1, 2, 3, 4]
+        self.dice_labels = [0, 1, 2, 3, 4]
         self.downsample_rate = 16
         # Mahesh : Q. Wasnt able to modify the the funcs list (for storeing the affines of images just for reconstructing images for verification) 
         # outside init, e.g. in __get_item__(), Why? It was empty.
