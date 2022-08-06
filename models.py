@@ -210,46 +210,22 @@ class RegNet(nn.Module):
         # self.drop = nn.Dropout(droprate)
 
     def eval_dice(self, fixed_label, moving_label, flow, fix_nopad=None, seg_fname=None):
-        warplabel = self.spatial_transformer_network(moving_label, flow)
+        warped_seg = self.spatial_transformer_network(moving_label, flow)
         if fix_nopad is not None:
-            warplabel = fix_nopad * warplabel
+            warped_seg = fix_nopad * warped_seg
         # Mahesh : Q. Shouldn't there be argmax() here instead of max()? >> No it actually is taking indices by taking torch.max(...)[1].
         # Mahesh : Q. Not sure if taking max here is really required ? Our warped seg just gives us the single value or score, so max will always be zero here. 
         # Is this the error we are experiencing?
         # warplabel = torch.max(warped_seg.detach(),dim=1)[1]
-        warplabel = warplabel.squeeze(0)
-        # torch.save(warplabel, 'warplabel.pt')
+        warplabel = warped_seg.squeeze(0)
+        torch.save(warplabel, 'warplabel2.pt')
         warpseg = torch.nn.functional.one_hot(warplabel.long(), num_classes=self.n_class).float().permute(0, 4, 1, 2, 3)
         dice = dice_onehot(warpseg[:, 1:, :, :, :].detach(), fixed_label[:, 1:, :, :, :].detach())#disregard background
-        self.seg_imgs(warpseg, fixed_label, seg_fname, one_hot=True)
+        seg_fname = None # Temporary
+        if seg_fname is not None:
+            self.seg_imgs(warpseg, fixed_label, seg_fname, one_hot=True)
         return dice
 
-    def seg_imgs(self, y_pred, y_true, fname, one_hot=False):
-        if one_hot:
-           y_pred = torch.max(y_pred.detach(),dim=1)[1]
-           y_pred = y_pred.unsqueeze(0)
-           y_true = torch.max(y_true.detach(),dim=1)[1]
-           y_true = y_true.unsqueeze(0)
-        fig_rows = 4
-        fig_cols = 4
-        n_subplots = fig_rows * fig_cols
-        n_slice = y_true.shape[4]
-        step_size = n_slice // n_subplots
-        plot_range = n_subplots * step_size
-        start_stop = int((n_slice - plot_range) / 2)
-        fig, axs = plt.subplots(fig_rows, fig_cols, figsize=[10, 10])
-        y_true = y_true.detach().cpu().numpy()[0, 0, ...]
-        y_pred = y_pred.detach().cpu().numpy()[0, 0, ...]
-        y_true[ y_true==0 ] = np.nan
-        for idx, img in enumerate(range(start_stop, plot_range, step_size)):
-            axs.flat[idx].imshow(y_true[:, :, img])
-            axs.flat[idx].imshow(y_pred[:, :, img], cmap='gray', alpha=0.8)
-            axs.flat[idx].axis('off')
-            
-        plt.tight_layout()
-        plt.savefig(fname)
-        plt.cla()
-        plt.close()
         
     def dice_val_VOI(self, y_pred, y_true, dice_labels, fix_nopad, seg_fname=None): 
         # Mahesh - Only checks the segmentation DICE of below lables, not all.
@@ -277,9 +253,36 @@ class RegNet(nn.Module):
             self.seg_imgs(y_pred, y_true, seg_fname+"iou"+str(mean_DSC*100)+".png")
         return mean_DSC
 
-# By deafult we give dice labels of the BraTS datatset. If you are not one-hot encoding the dataset, you have to
-# use the labels for calculating the DICE scores.
-    def forward(self, fix, moving, fix_label, moving_label, fix_nopad=None, rtloss=True, eval=True, dice_labels=[0, 1, 2, 4], 
+    def seg_imgs(self, y_pred, y_true, fname, one_hot=False):
+        if one_hot:
+           y_pred = torch.max(y_pred.detach(),dim=1)[1]
+           y_pred = y_pred.unsqueeze(0)
+           y_true = torch.max(y_true.detach(),dim=1)[1]
+           y_true = y_true.unsqueeze(0)
+        fig_rows = 4
+        fig_cols = 4
+        n_subplots = fig_rows * fig_cols
+        n_slice = y_true.shape[4]
+        step_size = n_slice // n_subplots
+        plot_range = n_subplots * step_size
+        start_stop = int((n_slice - plot_range) / 2)
+        fig, axs = plt.subplots(fig_rows, fig_cols, figsize=[10, 10])
+        y_true = np.array(y_true.detach().cpu().numpy()[0, 0, ...], dtype='float64')
+        y_pred = np.array(y_pred.detach().cpu().numpy()[0, 0, ...], dtype='float64')
+        y_true[ y_true==0 ] = np.nan
+        for idx, img in enumerate(range(start_stop, plot_range, step_size)):
+            axs.flat[idx].imshow(y_true[:, :, img])
+            axs.flat[idx].imshow(y_pred[:, :, img], alpha=0.8)
+            axs.flat[idx].axis('off')
+            
+        plt.tight_layout()
+        plt.savefig(fname)
+        plt.cla()
+        plt.close()
+        
+    # By deafult we give dice labels of the BraTS datatset. If you are not one-hot encoding the dataset, you have to
+    # use the labels for calculating the DICE scores.
+    def forward(self, fix, moving, fix_label, moving_label, fix_nopad=None, rtloss=True, eval=True, dice_labels=[1, 2, 3, 4], 
                 seg_fname = None):
         x = torch.cat([moving,fix], dim = 1)
         unet_out = self.unet(x)
@@ -306,7 +309,7 @@ class RegNet(nn.Module):
             sloss = sim_loss
             
             if eval:
-                dice = self.eval_dice(fix_label, moving_label, flow, fix_nopad)
+                dice = self.eval_dice(fix_label, moving_label, flow, fix_nopad, seg_fname=seg_fname)
                 # warped_seg = self.spatial_transformer_network(moving_label, flow)
                 # warped_seg = torch.max(warped_seg.detach(),dim=1)[1]
                 # dice  = self.dice_val_VOI(warped_seg, fix_label, dice_labels, fix_nopad, seg_fname)
@@ -316,7 +319,7 @@ class RegNet(nn.Module):
                 return sloss, grad_loss
         else:
             if eval:
-                dice = self.eval_dice(fix_label, moving_label, flow, fix_nopad)
+                dice = self.eval_dice(fix_label, moving_label, flow, fix_nopad, seg_fname=seg_fname)
                 # warped_seg = self.spatial_transformer_network(moving_label, flow)
                 # warped_seg = torch.max(warped_seg.detach(),dim=1)[1]
                 # dice = self.dice_val_VOI(warped_seg, fix_label, dice_labels, fix_nopad, seg_fname)

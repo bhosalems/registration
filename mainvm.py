@@ -18,6 +18,7 @@ import dataset.chaos as chaos
 from torch.optim.lr_scheduler import StepLR
 from train import TrainModel
 from models import RegNet
+import math
 
 CANDI_PATH = '~/data/CANDI_split'
 MSD_PATH = r'C:\Users\mahes\Desktop\UB\Thesis\Img registration\registration\dataset\MSD'
@@ -54,6 +55,7 @@ def get_args():
 
 if __name__ == "__main__":
     args = get_args()
+    downsample_rate = 16
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
     args.weight = [float(i) for i in args.weight.split(',')]
     
@@ -104,14 +106,20 @@ if __name__ == "__main__":
         NUM_CLASS = 4
     elif args.dataset == 'CHAOS':
         pad_size = [400, 400, 50]
-        train_dataloader, test_dataloader = chaos.Chaos_dataloader(root_path=CHAOS_PATH, bsize=1, 
-                                                         modality='T1DUAL', phase='InPhase', size=pad_size, 
-                                                         data_split=False, n_fix=1)
-        pad_size = train_dataloader.dataset.size        
+        tr_path = CHAOS_PATH + r"CHAOS_Train_Sets/Train_Sets/MR/"
+        tst_path = CHAOS_PATH + r"CHAOS_Train_Sets/Train_Sets/MR/"
+        train_dataloader, test_dataloader = chaos.Chaos_dataloader(root_path=CHAOS_PATH,  tr_path=tr_path, tst_path=tst_path, 
+                                                         bsize=1, tr_modality='T1DUAL', tr_phase='InPhase', tst_modality='T1DUAL', 
+                                                         tst_phase='OutPhase', size=[400, 400, 50], data_split=False, n_fix=1, tr_num_samples=0, 
+                                                         tst_num_samples=10)
+        if pad_size[-1]%downsample_rate != 0:
+            orig_size = pad_size
+            c_dim = orig_size[-1]
+            pad_size[-1] += abs(c_dim - (math.ceil(c_dim/downsample_rate)*downsample_rate))      
         window_r = 7
         # Mahesh : Should the mumber of classes be one more than total number of classes? As required for some of the loss functions etc. >> No Need, 
         # we are not using any other loss function such as cross entropy loss which takes in number of classes as an arguemnt.
-        NUM_CLASS = 4
+        NUM_CLASS = 5
 
     ##BUILD MODEL##
     model = RegNet(pad_size, winsize=window_r, dim=3, n_class=NUM_CLASS).cuda()
