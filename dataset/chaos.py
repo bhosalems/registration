@@ -12,77 +12,126 @@ import numpy as np
 import nibabel 
 import itertools
 import imageio
+import multiprocessing
 
 # Chaos is in the DICOM file format but we need to conver it into the nifty file format which we understand
-def dicom2nifty(dicom_path):
-    # if os.sep=='\\':
-    #     dicom_path = dicom_path.replace('/','\\')
-    # elif os.sep == '/':
-    #     dicom_path = dicom_path.replace('\\','/')
-    # else:
-    #     raise ValueError('os.sep must be \\ or /!')
-    dirs = os.listdir(dicom_path)
-    modalitites = ['T1DUAL', 'T2SPIR']
-    for dir in dirs:
-       b_base_record = dicom_path + "/" + dir
-       for modality in modalitites:
-           base_record = b_base_record + "/" +  modality + "/DICOM_anon"
-           if not os.path.exists(base_record):
-               warnings.warn(f"Path {base_record} doesn't exists")
-               continue
-           if modality == "T1DUAL":
-                phases = ["InPhase", "OutPhase"]
-           else:
-               phases = ['']
-           for phase in phases:
-                record = base_record + "/" + phase
+class Chaos_processor(multiprocessing.Process):
+    def __init__(self, **kwargs: object) -> None:
+        super(Chaos_processor, self).__init__()
+        self.fid = kwargs['fid']
+        n = kwargs['num_workers']
+        n = 20//n
+        # temopararily set the 20 becuase there are 20 folders in each CHAOS dataset.
+        assert(20%n == 0)
+        self.dirs = sorted(os.listdir(kwargs['dicom_path']))[self.fid*n : self.fid*n+n]
+        self.dicom_path = kwargs['dicom_path']
+        self.modalities = kwargs['modalities']
+    
+    def run(self):
+        self.dicom2nifty(self.modalities)
+        self.prepare_seg(self.modalities)
+
+    def dicom2nifty(self, modalities =['T1DUAL', 'T2SPIR']):
+        # if os.sep=='\\':
+        #     dicom_path = dicom_path.replace('/','\\')
+        # elif os.sep == '/':
+        #     dicom_path = dicom_path.replace('\\','/')
+        # else:
+        #     raise ValueError('os.sep must be \\ or /!')
+        modalities = modalities
+        for dir in self.dirs:
+            b_base_record = self.dicom_path + "/" + dir
+            if len(modalities):
+                for modality in modalities:
+                    base_record = b_base_record + "/" +  modality + "/DICOM_anon"
+                    if not os.path.exists(base_record):
+                        warnings.warn(f"Path {base_record} doesn't exists")
+                        continue
+                    if modality == "T1DUAL":
+                            phases = ["InPhase", "OutPhase"]
+                    else:
+                        phases = ['']
+                    for phase in phases:
+                            record = base_record + "/" + phase
+                            print("Converting " + record + " ...")
+                            series_file_names = sitk.ImageSeriesReader.GetGDCMSeriesFileNames(record)
+                            series_reader = sitk.ImageSeriesReader()
+                            series_reader.SetFileNames(series_file_names)
+                            image3D = series_reader.Execute()
+                            output_file = "IMG-"+series_file_names[0].split("/")[-1].split("-")[1]
+                            output_file = record + "/" + output_file + ".nii.gz"
+                            sitk.WriteImage(image3D, output_file)
+            else:
+                record = b_base_record + "/" +  "DICOM_anon"
+                if not os.path.exists(record):
+                        warnings.warn(f"Path {record} doesn't exists")
+                        continue
                 print("Converting " + record + " ...")
                 # 1/T1DUAL/DICOM_anon/InPhase"
                 series_file_names = sitk.ImageSeriesReader.GetGDCMSeriesFileNames(record)
                 series_reader = sitk.ImageSeriesReader()
                 series_reader.SetFileNames(series_file_names)
                 image3D = series_reader.Execute()
-                output_file = "IMG-"+series_file_names[0].split("/")[-1].split("-")[1]
+                output_file = "IMG-"+series_file_names[0].split("/")[-3]
                 output_file = record + "/" + output_file + ".nii.gz"
                 sitk.WriteImage(image3D, output_file)
 
-def prepare_seg(data_path):
-    dirs = os.listdir(data_path)
-    modalitites = ['T1DUAL', 'T2SPIR']
-    for dir in dirs:
-       b_base_record = data_path + "/" + dir
-       for modality in modalitites:
-            base_record = b_base_record + "/" +  modality + "/Ground"
-            data_list = []
-            img = None
-            for img in sorted(Path(base_record).rglob("*" + ".png")):
-                data = imageio.imread(img)
-                data = np.transpose(data)
-                data_list.append(data)
+    def prepare_seg(self, modalities=['T1DUAL', 'T2SPIR']):
+        modalities = modalities
+        for dir in self.dirs:
+            b_base_record = self.dicom_path + "/" + dir
+            if len(modalities):
+                for modality in modalities:
+                    base_record = b_base_record + "/" +  modality + "/Ground"
+                    data_list = []
+                    img = None
+                    for img in sorted(Path(base_record).rglob("*" + ".png")):
+                        data = imageio.imread(img)
+                        data = np.transpose(data)
+                        data_list.append(data)
+                        
+                    # Make the depth last dimension
+                    data = np.stack(data_list, axis=2)
+                    
+                    # TODO Determine later if we need mask to make sure everything else other 
+                    # than labels in the data is all zeros.
+                    # mask = np.zeros_like(data)
+                    data = np.where((data>=50) & (data<=70), 1, data) # Liver
+                    # mask = np.where((data>=50) & (data<=70), 1, 0)
+                    data = np.where((data>=110) & (data<=135), 2, data) # Right Kidney
+                    # mask = np.where((data>=110) & (data<=135), 1, 0)
+                    data = np.where((data>=175) & (data<=200), 3, data) # Left Kidney
+                    # mask = np.where((data>=175) & (data<=200), 1, 0)
+                    data = np.where((data>=240) & (data<=255), 4, data) # Spleen
+                    # mask = np.where((data>=240) & (data<=255), 1, 0)
+                    # data = np.where((mask==1), data, 0)
+                    
+                    # Mahesh : Q. Is this the right way to save the numpy array as the nifty label? >> works now after taking tanspose.
+                    seg = nibabel.Nifti1Image(data, affine=np.eye(4))
+                    print(img.absolute().as_posix().split("/")[-1].split("-")[1])
+                    output_file = "IMG-" + img.absolute().as_posix().split("/")[-1].split("-")[1]
+                    output_file = base_record + "/" + output_file + "_seg.nii.gz"
+                    nibabel.save(seg, output_file)
+            else:
+                base_record = b_base_record + "/Ground"
+                data_list = []
+                img = None
+                for img in sorted(Path(base_record).rglob("*" + ".png")):
+                    data = imageio.imread(img)
+                    # data = np.transpose(data)
+                    data_list.append(data)
+                    
+                # Make the depth last dimension
+                data = np.stack(data_list, axis=2)
                 
-            # Make the depth last dimension
-            data = np.stack(data_list, axis=2)
-            
-            # TODO Determine later if we need mask to make sure everything else other 
-            # than labels in the data is all zeros.
-            # mask = np.zeros_like(data)
-            data = np.where((data>=50) & (data<=70), 1, data) # Liver
-            # mask = np.where((data>=50) & (data<=70), 1, 0)
-            data = np.where((data>=110) & (data<=135), 2, data) # Right Kidney
-            # mask = np.where((data>=110) & (data<=135), 1, 0)
-            data = np.where((data>=175) & (data<=200), 3, data) # Left Kidney
-            # mask = np.where((data>=175) & (data<=200), 1, 0)
-            data = np.where((data>=240) & (data<=255), 4, data) # Spleen
-            # mask = np.where((data>=240) & (data<=255), 1, 0)
-            # data = np.where((mask==1), data, 0)
-            
-            # Mahesh : Q. Is this the right way to save the numpy array as the nifty label? >> works now after taking tanspose.
-            seg = nibabel.Nifti1Image(data, affine=np.eye(4))
-            print(img.absolute().as_posix().split("/")[-1].split("-")[1])
-            output_file = "IMG-" + img.absolute().as_posix().split("/")[-1].split("-")[1]
-            output_file = base_record + "/" + output_file + "_seg.nii.gz"
-            nibabel.save(seg, output_file)
-  
+                data = np.where((data>=50) & (data<=70), 1, data) # Liver
+                
+                # Mahesh : Q. Is this the right way to save the numpy array as the nifty label? >> works now after taking tanspose.
+                seg = nibabel.Nifti1Image(data, affine=np.eye(4))
+                print(img.absolute().as_posix().split("/")[-3])
+                output_file = "IMG-" + img.absolute().as_posix().split("/")[-3]
+                output_file = base_record + "/" + output_file + "_seg.nii.gz"
+                nibabel.save(seg, output_file)
 
 def datasplit(rdpath='/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR', 
               savepath='/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR', n_fix=1):
@@ -132,6 +181,7 @@ class ChaosDataset(Dataset):
                 path = datapath + f'/{subpath}/{modality}/Ground'
                 assert os.path.exists(path)
                 self.segpath.append(path)
+        assert(len(self.imgpath)!=0)
         n = len(self.imgpath)
         pairs = itertools.product(range(n),range(n))
         self.pairs = list(pairs)
@@ -273,11 +323,56 @@ def Chaos_dataloader(root_path, bsize, tr_path, tst_path, tr_modality, tr_phase,
 
 if __name__ == "__main__":
     data_path = r"/data_local/mbhosale/CHAOS/"
-    dicom2nifty(r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR")
-    dicom2nifty(r"/data_local/mbhosale/CHAOS/CHAOS_Test_Sets/Test_Sets/MR")
+    # dicom2nifty(r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR")
+    # dicom2nifty(r"/data_local/mbhosale/CHAOS/CHAOS_Test_Sets/Test_Sets/MR")
+    # dicom2nifty(r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[])
+    # dicom2nifty(r"/data_local/mbhosale/CHAOS/CHAOS_Test_Sets/Test_Sets/CT", modalities=[])
     
-    prepare_seg(r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR")
+    # prepare_seg(r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR")
+    # prepare_seg(r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[])
     # NOTE There's no ground truth in the test images.
+    
+    c1 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
+                        num_workers=5, fid=0)
+    c2 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
+                        num_workers=5, fid=1)
+    c3 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
+                        num_workers=5, fid=2)
+    c4 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
+                        num_workers=5, fid=3)
+    c5 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
+                        num_workers=5, fid=4)
+    c1.start()
+    c2.start()
+    c3.start()
+    c4.start()
+    c5.start()
+    c1.join()
+    c2.join()
+    c3.join()
+    c4.join()
+    c5.join()
+    
+    c1 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
+                        num_workers=5, fid=0)
+    c2 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
+                        num_workers=5, fid=1)
+    c3 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
+                        num_workers=5, fid=2)
+    c4 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
+                        num_workers=5, fid=3)
+    c5 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
+                        num_workers=5, fid=4)
+    c1.start()
+    c2.start()
+    c3.start()
+    c4.start()
+    c5.start()
+    c1.join()
+    c2.join()
+    c3.join()
+    c4.join()
+    c5.join()
     
     # We won't be splitting data permamenently we rather choose the pairs of fixed and moving images, similar to msd dataloader.
     # datasplit(rdpath='/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR', 
@@ -286,14 +381,14 @@ if __name__ == "__main__":
             #   savepath='/data_local/mbhosale/CHAOS/CHAOS_Test_Sets/Test_Sets/MR')
     
     # We will pad the images to max H,W,D i.e. 400x400x50
-    train_dataloader, test_dataloader = Chaos_dataloader(root_path=data_path,  tr_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR/", 
-                                                         tst_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR/", 
-                                                         bsize=1, tr_modality='T1DUAL', tr_phase='InPhase', tst_modality='T1DUAL', 
-                                                         tst_phase='OutPhase', size=[400, 400, 50], data_split=False, n_fix=1)
-    for i, samples in enumerate(train_dataloader):
-        print(samples[0].shape)
-        # ni_img = nibabel.Nifti1Image(train_dataloader.dataset.fiximg, train_dataloader.dataset.func)
-        # nibabel.save(ni_img, 'output.nii.gz')
+    # train_dataloader, test_dataloader = Chaos_dataloader(root_path=data_path,  tr_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR/", 
+    #                                                      tst_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR/", 
+    #                                                      bsize=1, tr_modality='T1DUAL', tr_phase='InPhase', tst_modality='T1DUAL', 
+    #                                                      tst_phase='OutPhase', size=[400, 400, 50], data_split=False, n_fix=1)
+    # for i, samples in enumerate(train_dataloader):
+    #     print(samples[0].shape)
+    #     # ni_img = nibabel.Nifti1Image(train_dataloader.dataset.fiximg, train_dataloader.dataset.func)
+    #     # nibabel.save(ni_img, 'output.nii.gz')
     
-    for _, samples in enumerate(test_dataloader):
-        print(samples[0].shape)
+    # for _, samples in enumerate(test_dataloader):
+    #     print(samples[0].shape)

@@ -212,13 +212,15 @@ class RegNet(nn.Module):
     def eval_dice(self, fixed_label, moving_label, flow, fix_nopad=None, seg_fname=None):
         warped_seg = self.spatial_transformer_network(moving_label, flow)
         if fix_nopad is not None:
+            # Mahesh : NOTE You dont need same dimensions for of warped_seg and fix_nopad for elementwise product.
             warped_seg = fix_nopad * warped_seg
+            moving_label = fix_nopad * moving_label
         # Mahesh : Q. Shouldn't there be argmax() here instead of max()? >> No it actually is taking indices by taking torch.max(...)[1].
         # Mahesh : Q. Not sure if taking max here is really required ? Our warped seg just gives us the single value or score, so max will always be zero here. 
         # Is this the error we are experiencing?
-        # warplabel = torch.max(warped_seg.detach(),dim=1)[1]
-        warplabel = warped_seg.squeeze(0)
-        torch.save(warplabel, 'warplabel2.pt')
+        warplabel = torch.max(warped_seg.detach(),dim=1)[1]
+        # warplabel = warped_seg.squeeze(0)
+        # torch.save(warplabel, 'warplabel2.pt')
         warpseg = torch.nn.functional.one_hot(warplabel.long(), num_classes=self.n_class).float().permute(0, 4, 1, 2, 3)
         dice = dice_onehot(warpseg[:, 1:, :, :, :].detach(), fixed_label[:, 1:, :, :, :].detach())#disregard background
         seg_fname = None # Temporary
@@ -249,6 +251,7 @@ class RegNet(nn.Module):
             DSCs[idx] = dsc
             idx += 1
         mean_DSC = np.mean(DSCs)
+        seg_fname = None # Temporary
         if seg_fname is not None:
             self.seg_imgs(y_pred, y_true, seg_fname+"iou"+str(mean_DSC*100)+".png")
         return mean_DSC
@@ -282,7 +285,7 @@ class RegNet(nn.Module):
         
     # By deafult we give dice labels of the BraTS datatset. If you are not one-hot encoding the dataset, you have to
     # use the labels for calculating the DICE scores.
-    def forward(self, fix, moving, fix_label, moving_label, fix_nopad=None, rtloss=True, eval=True, dice_labels=[1, 2, 3, 4], 
+    def forward(self, fix, moving, fix_label, moving_label, fix_nopad=None, rtloss=True, eval=True, dice_labels=[0, 1, 2, 3, 4], 
                 seg_fname = None):
         x = torch.cat([moving,fix], dim = 1)
         unet_out = self.unet(x)

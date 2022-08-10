@@ -19,6 +19,7 @@ class CANDIDataset(Dataset):
         self.mode = mode
         self.label = [2,3,4,7,8,10,11,12,13,14,15,16,17,18,24,28,\
             41,42,43,46,47,49,50,51,52,53,54,60]
+        self.dice_labels = self.label
         #fix
         for fixpath in os.listdir(f'{datapath}/fix'):
             self.fiximg = self.preprocess_img(f'{datapath}/fix/{fixpath}/anat/NIfTI/anat.nii.gz')
@@ -35,7 +36,6 @@ class CANDIDataset(Dataset):
             assert os.path.exists(segpath)
             self.imgpath.append(imgpath)
             self.segpath.append(segpath)
-        
         
     def __len__(self):
         return len(self.imgpath) 

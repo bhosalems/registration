@@ -20,7 +20,7 @@ from train import TrainModel
 from models import RegNet
 import math
 
-CANDI_PATH = '~/data/CANDI_split'
+CANDI_PATH = '/data_local/mbhosale/CANDI_split'
 MSD_PATH = r'C:\Users\mahes\Desktop\UB\Thesis\Img registration\registration\dataset\MSD'
 IXI_PATH = r'/home/csgrad/mbhosale/Image_registration/TransMorph_Transformer_for_Medical_Image_Registration/IXI/IXI_data/'
 BraTS_PATH = r'/home/csgrad/mbhosale/Image_registration/datasets/BraTS2018'
@@ -61,7 +61,7 @@ if __name__ == "__main__":
     
     handlers = [logging.StreamHandler()]
     if args.debug:
-        logfile = f'debug_072622_xuan_dice_test'
+        logfile = f'debug_081022_CANDI_test_original'
     else:
         logfile = f'{args.logfile}-{datetime.now().strftime("%m%d%H%M")}'
     handlers.append(logging.FileHandler(
