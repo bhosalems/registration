@@ -12,27 +12,6 @@ from pathlib import Path
 import imageio
 import SimpleITK as sitk
 
-def seg2nii(base_record):
-    data_list = []
-    for img in sorted(Path(base_record + "/").rglob("*" + ".png")):
-        data = imageio.imread(img)
-        # data = np.transpose(data)
-        data_list.append(data)
-
-    # Make the depth last dimension
-    data = np.stack(data_list, axis=2)
-
-    data = np.where((data>=50) & (data<=70), 1, data) # Liver
-    data = np.where((data>=110) & (data<=135), 2, data) # Right Kidney
-    data = np.where((data>=175) & (data<=200), 3, data) # Left Kidney
-    data = np.where((data>=240) & (data<=255), 4, data) # Spl
-    # Mahesh : Q. Is this the right way to save the numpy array as the nifty label? >> works now after taking tanspose.
-    seg = sitk.GetImageFromArray(np.moveaxis(data, [0, 1, 2], [-1, -2, -3]))
-    output_file = "SEG"+ base_record.split("/")[-1].split("_")[-2]
-    output_file = base_record + "/" + output_file + ".nii.gz"
-    # nibabel.save(seg, output_file)
-    sitk.WriteImage(seg, output_file)
-
 def tensor2nii(pred, true, fnames, mode, one_hot=True):
         assert(len(fnames)>=2)        
         assert(len(pred.shape)==5)
@@ -44,21 +23,25 @@ def tensor2nii(pred, true, fnames, mode, one_hot=True):
             true = true[0, ...].numpy().astype(np.uint8)
             pred = pred[0, ...].numpy().astype(np.uint8)
             
-            if not os.path.exists(fnames[0]):
-                os.mkdir(fnames[0])
-            # NOTE adding "0" by hardcoding to convert pngs later in prepare_seg() of chaos.py on 
-            # the sorted list. Potentially need to change if the depth go two digit.
-            for d in range(0, true.shape[2]):
-                img = Image.fromarray(true[..., d])
-                img.save(fnames[0] + "/0" + str(d) + ".png")
-            seg2nii(fnames[0])    
+            true = np.where((true>=50) & (true<=70), 1, true) # Liver
+            true = np.where((true>=110) & (true<=135), 2, true) # Right Kidney
+            true = np.where((true>=175) & (true<=200), 3, true) # Left Kidney
+            true = np.where((true>=240) & (true<=255), 4, true) # Spl
+            # Mahesh : Q. Is this the right way to save the numpy array as the nifty label? >> works now after taking tanspose.
+            seg = sitk.GetImageFromArray(np.moveaxis(true, [0, 1, 2], [-1, -2, -3]))
+            output_file = fnames[0] + ".nii.gz"
+            sitk.WriteImage(seg, output_file)
             
-            if not os.path.exists(fnames[1]):
-                os.mkdir(fnames[1])
-            for d in range(0, pred.shape[2]):
-                img = Image.fromarray(pred[..., d])
-                img.save(fnames[1] + "/0" + str(d) + ".png")
-            seg2nii(fnames[1])
+            
+            pred = np.where((pred>=50) & (pred<=70), 1, pred) # Liver
+            pred = np.where((pred>=110) & (pred<=135), 2, pred) # Right Kidney
+            pred = np.where((pred>=175) & (pred<=200), 3, pred) # Left Kidney
+            pred = np.where((pred>=240) & (pred<=255), 4, pred) # Spl
+            # Mahesh : Q. Is this the right way to save the numpy array as the nifty label? >> works now after taking tanspose.
+            seg = sitk.GetImageFromArray(np.moveaxis(pred, [0, 1, 2], [-1, -2, -3]))
+            output_file = fnames[1] + ".nii.gz"
+            sitk.WriteImage(seg, output_file)
+
         else:
             assert(fnames[0].split('.')[-2] + fnames[0].split('.')[-1] == 'niigz')
             assert(fnames[1].split('.')[-2] + fnames[1].split('.')[-1] == 'niigz')
@@ -315,6 +298,7 @@ class RegNet(nn.Module):
                 seg_fname = None):
         x = torch.cat([moving,fix], dim = 1)
         unet_out = self.unet(x)
+        save_nii = False
         # Mahesh : Q. Output of the displacement flow here is [1, Number of channels, height, width, depth], 
         # but our labels as well as moving has a single channel, should this be an issue? Check the transmorph code here.
         flow = self.conv(unet_out)
@@ -325,10 +309,6 @@ class RegNet(nn.Module):
                 fix = fix*fix_nopad
                 warp = warp*fix_nopad
             sim_loss, sim_mask = ncc_loss(warp, fix, reduce_mean=False, winsize=self.winsize) #[0,1]
-            fnames = []
-            fnames.append(seg_fname+"true.nii.gz")
-            fnames.append(seg_fname+"warp.nii.gz")
-            tensor2nii(warp, fix, fnames, mode='volume', one_hot=True)
             if sim_mask.any():
                 sim_loss = sim_loss[sim_mask].mean()
             else:
@@ -340,9 +320,14 @@ class RegNet(nn.Module):
                 mask = fix_nopad.bool()
                 sim_mask = sim_mask*mask
             sloss = sim_loss
-            
+            if sloss*-1 >= 0.10:
+                fnames = []
+                fnames.append(seg_fname+"true.nii.gz")
+                fnames.append(seg_fname+"warp.nii.gz")
+                tensor2nii(warp, fix, fnames, mode='volume', one_hot=True)
+                save_nii = True
             if eval:
-                dice = self.eval_dice(fix_label, moving_label, flow, fix_nopad, seg_fname=seg_fname, save_nii=True)
+                dice = self.eval_dice(fix_label, moving_label, flow, fix_nopad, seg_fname=seg_fname, save_nii=save_nii)
                 # warped_seg = self.spatial_transformer_network(moving_label, flow)
                 # warped_seg = torch.max(warped_seg.detach(),dim=1)[1]
                 # dice  = self.dice_val_VOI(warped_seg, fix_label, dice_labels, fix_nopad, seg_fname)
@@ -352,7 +337,7 @@ class RegNet(nn.Module):
                 return sloss, grad_loss
         else:
             if eval:
-                dice = self.eval_dice(fix_label, moving_label, flow, fix_nopad, seg_fname=seg_fname, save_nii=True)
+                dice = self.eval_dice(fix_label, moving_label, flow, fix_nopad, seg_fname=seg_fname, save_nii=save_nii)
                 # warped_seg = self.spatial_transformer_network(moving_label, flow)
                 # warped_seg = torch.max(warped_seg.detach(),dim=1)[1]
                 # dice = self.dice_val_VOI(warped_seg, fix_label, dice_labels, fix_nopad, seg_fname)

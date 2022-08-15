@@ -90,6 +90,8 @@ class Chaos_processor(multiprocessing.Process):
                     img = None
                     for img in sorted(Path(base_record).rglob("*" + ".png")):
                         data = imageio.imread(img)
+                        # Mahesh: Taking tranpose is required because the order in which simpleitk / nibabel 
+                        # recognizes th axes is different than how numpy axes are recognized.
                         data = np.transpose(data)
                         data_list.append(data)
                         
