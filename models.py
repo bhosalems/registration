@@ -6,6 +6,69 @@ from losses import *
 import matplotlib.pyplot as plt
 import warnings
 warnings.simplefilter('error', UserWarning)
+import os
+from PIL import Image
+from pathlib import Path
+import imageio
+import SimpleITK as sitk
+
+def seg2nii(base_record):
+    data_list = []
+    for img in sorted(Path(base_record + "/").rglob("*" + ".png")):
+        data = imageio.imread(img)
+        # data = np.transpose(data)
+        data_list.append(data)
+
+    # Make the depth last dimension
+    data = np.stack(data_list, axis=2)
+
+    data = np.where((data>=50) & (data<=70), 1, data) # Liver
+    data = np.where((data>=110) & (data<=135), 2, data) # Right Kidney
+    data = np.where((data>=175) & (data<=200), 3, data) # Left Kidney
+    data = np.where((data>=240) & (data<=255), 4, data) # Spl
+    # Mahesh : Q. Is this the right way to save the numpy array as the nifty label? >> works now after taking tanspose.
+    seg = sitk.GetImageFromArray(np.moveaxis(data, [0, 1, 2], [-1, -2, -3]))
+    output_file = "SEG"+ base_record.split("/")[-1].split("_")[-2]
+    output_file = base_record + "/" + output_file + ".nii.gz"
+    # nibabel.save(seg, output_file)
+    sitk.WriteImage(seg, output_file)
+
+def tensor2nii(pred, true, fnames, mode, one_hot=True):
+        assert(len(fnames)>=2)        
+        assert(len(pred.shape)==5)
+        assert(len(true.shape)==5)
+        if mode == 'seg':
+            if one_hot:
+                true = torch.max(true.detach().cpu(), dim=1)[1]
+                pred = torch.max(pred.detach().cpu(), dim=1)[1]
+            true = true[0, ...].numpy().astype(np.uint8)
+            pred = pred[0, ...].numpy().astype(np.uint8)
+            
+            if not os.path.exists(fnames[0]):
+                os.mkdir(fnames[0])
+            # NOTE adding "0" by hardcoding to convert pngs later in prepare_seg() of chaos.py on 
+            # the sorted list. Potentially need to change if the depth go two digit.
+            for d in range(0, true.shape[2]):
+                img = Image.fromarray(true[..., d])
+                img.save(fnames[0] + "/0" + str(d) + ".png")
+            seg2nii(fnames[0])    
+            
+            if not os.path.exists(fnames[1]):
+                os.mkdir(fnames[1])
+            for d in range(0, pred.shape[2]):
+                img = Image.fromarray(pred[..., d])
+                img.save(fnames[1] + "/0" + str(d) + ".png")
+            seg2nii(fnames[1])
+        else:
+            assert(fnames[0].split('.')[-2] + fnames[0].split('.')[-1] == 'niigz')
+            assert(fnames[1].split('.')[-2] + fnames[1].split('.')[-1] == 'niigz')
+            
+            pred = pred.detach().cpu()[0, 0, ...].permute(2, 1, 0).numpy()
+            true = true.detach().cpu()[0, 0, ...].permute(2, 1, 0).numpy()
+            true = sitk.GetImageFromArray(true)
+            pred = sitk.GetImageFromArray(pred)
+            sitk.WriteImage(true, fnames[0])
+            sitk.WriteImage(pred, fnames[1])
 
 class SpatialTransformer(nn.Module):
     def __init__(self, size, mode='bilinear'):
@@ -19,50 +82,6 @@ class SpatialTransformer(nn.Module):
         new_locs = self.meshgrid + flow
         self.new_locs = new_locs
         return nnf.grid_sample(src, new_locs, mode=self.mode, align_corners=False)
-
-# class SpatialTransformer(nn.Module):
-#     """
-#     N-D Spatial Transformer
-#     """
-
-#     def __init__(self, size, mode='bilinear'):
-#         super().__init__()
-
-#         self.mode = mode
-
-#         # create sampling grid
-#         vectors = [torch.arange(0, s) for s in size]
-#         grids = torch.meshgrid(vectors)
-#         grid = torch.stack(grids)
-#         grid = torch.unsqueeze(grid, 0)
-#         grid = grid.type(torch.FloatTensor)
-
-#         # registering the grid as a buffer cleanly moves it to the GPU, but it also
-#         # adds it to the state dict. this is annoying since everything in the state dict
-#         # is included when saving weights to disk, so the model files are way bigger
-#         # than they need to be. so far, there does not appear to be an elegant solution.
-#         # see: https://discuss.pytorch.org/t/how-to-register-buffer-without-polluting-state-dict
-#         self.register_buffer('grid', grid)
-
-#     def forward(self, src, flow):
-#         # new locations
-#         new_locs = self.grid + flow
-#         shape = flow.shape[2:]
-
-#         # need to normalize grid values to [-1, 1] for resampler
-#         for i in range(len(shape)):
-#             new_locs[:, i, ...] = 2 * (new_locs[:, i, ...] / (shape[i] - 1) - 0.5)
-
-#         # move channels dim to last position
-#         # also not sure why, but the channels need to be reversed
-#         if len(shape) == 2:
-#             new_locs = new_locs.permute(0, 2, 3, 1)
-#             new_locs = new_locs[..., [1, 0]]
-#         elif len(shape) == 3:
-#             new_locs = new_locs.permute(0, 2, 3, 4, 1)
-#             new_locs = new_locs[..., [2, 1, 0]]
-
-#         return nnf.grid_sample(src, new_locs, align_corners=True, mode=self.mode)
 
 class conv_block(nn.Module):
     """
@@ -209,7 +228,7 @@ class RegNet(nn.Module):
         # self.softmax = nn.Softmax(dim=1)
         # self.drop = nn.Dropout(droprate)
 
-    def eval_dice(self, fixed_label, moving_label, flow, fix_nopad=None, seg_fname=None):
+    def eval_dice(self, fixed_label, moving_label, flow, fix_nopad=None, seg_fname=None, save_nii=False):
         warped_seg = self.spatial_transformer_network(moving_label, flow)
         if fix_nopad is not None:
             # Mahesh : NOTE You dont need same dimensions for of warped_seg and fix_nopad for elementwise product.
@@ -217,12 +236,18 @@ class RegNet(nn.Module):
             moving_label = fix_nopad * moving_label
         # Mahesh : Q. Shouldn't there be argmax() here instead of max()? >> No it actually is taking indices by taking torch.max(...)[1].
         # Mahesh : Q. Not sure if taking max here is really required ? Our warped seg just gives us the single value or score, so max will always be zero here. 
-        # Is this the error we are experiencing?
+        # Is this the error we are experiencing? >> No, originally when we calculate the max() we are passing the one hot encoded labels, so the output
+        # from the spatial transformer is not a single value but the a vector.
         warplabel = torch.max(warped_seg.detach(),dim=1)[1]
         # warplabel = warped_seg.squeeze(0)
         # torch.save(warplabel, 'warplabel2.pt')
         warpseg = torch.nn.functional.one_hot(warplabel.long(), num_classes=self.n_class).float().permute(0, 4, 1, 2, 3)
         dice = dice_onehot(warpseg[:, 1:, :, :, :].detach(), fixed_label[:, 1:, :, :, :].detach())#disregard background
+        if save_nii:
+            fnames = []
+            fnames.append(seg_fname+"true_seg")
+            fnames.append(seg_fname+"pred_seg")
+            tensor2nii(pred=warpseg, true=fixed_label, fnames=fnames, mode='seg', one_hot=True)
         seg_fname = None # Temporary
         if seg_fname is not None:
             self.seg_imgs(warpseg, fixed_label, seg_fname, one_hot=True)
@@ -256,11 +281,12 @@ class RegNet(nn.Module):
             self.seg_imgs(y_pred, y_true, seg_fname+"iou"+str(mean_DSC*100)+".png")
         return mean_DSC
 
+            
     def seg_imgs(self, y_pred, y_true, fname, one_hot=False):
         if one_hot:
-           y_pred = torch.max(y_pred.detach(),dim=1)[1]
+           y_pred = torch.max(y_pred.detach(), dim=1)[1]
            y_pred = y_pred.unsqueeze(0)
-           y_true = torch.max(y_true.detach(),dim=1)[1]
+           y_true = torch.max(y_true.detach(), dim=1)[1]
            y_true = y_true.unsqueeze(0)
         fig_rows = 4
         fig_cols = 4
@@ -299,6 +325,10 @@ class RegNet(nn.Module):
                 fix = fix*fix_nopad
                 warp = warp*fix_nopad
             sim_loss, sim_mask = ncc_loss(warp, fix, reduce_mean=False, winsize=self.winsize) #[0,1]
+            fnames = []
+            fnames.append(seg_fname+"true.nii.gz")
+            fnames.append(seg_fname+"warp.nii.gz")
+            tensor2nii(warp, fix, fnames, mode='volume', one_hot=True)
             if sim_mask.any():
                 sim_loss = sim_loss[sim_mask].mean()
             else:
@@ -312,7 +342,7 @@ class RegNet(nn.Module):
             sloss = sim_loss
             
             if eval:
-                dice = self.eval_dice(fix_label, moving_label, flow, fix_nopad, seg_fname=seg_fname)
+                dice = self.eval_dice(fix_label, moving_label, flow, fix_nopad, seg_fname=seg_fname, save_nii=True)
                 # warped_seg = self.spatial_transformer_network(moving_label, flow)
                 # warped_seg = torch.max(warped_seg.detach(),dim=1)[1]
                 # dice  = self.dice_val_VOI(warped_seg, fix_label, dice_labels, fix_nopad, seg_fname)
@@ -322,7 +352,7 @@ class RegNet(nn.Module):
                 return sloss, grad_loss
         else:
             if eval:
-                dice = self.eval_dice(fix_label, moving_label, flow, fix_nopad, seg_fname=seg_fname)
+                dice = self.eval_dice(fix_label, moving_label, flow, fix_nopad, seg_fname=seg_fname, save_nii=True)
                 # warped_seg = self.spatial_transformer_network(moving_label, flow)
                 # warped_seg = torch.max(warped_seg.detach(),dim=1)[1]
                 # dice = self.dice_val_VOI(warped_seg, fix_label, dice_labels, fix_nopad, seg_fname)

@@ -56,6 +56,9 @@ class Chaos_processor(multiprocessing.Process):
                             print("Converting " + record + " ...")
                             series_file_names = sitk.ImageSeriesReader.GetGDCMSeriesFileNames(record)
                             series_reader = sitk.ImageSeriesReader()
+                            # Mahesh NOTE: sitk saved the image with the depth as first dimension. But when you read the same
+                            # image with nababel with nibabel.load().getfdata()m, it returns the image array with the desired
+                            # i.e. with the depth as last dimension.
                             series_reader.SetFileNames(series_file_names)
                             image3D = series_reader.Execute()
                             output_file = "IMG-"+series_file_names[0].split("/")[-1].split("-")[1]
@@ -93,18 +96,14 @@ class Chaos_processor(multiprocessing.Process):
                     # Make the depth last dimension
                     data = np.stack(data_list, axis=2)
                     
-                    # TODO Determine later if we need mask to make sure everything else other 
-                    # than labels in the data is all zeros.
-                    # mask = np.zeros_like(data)
+                    # Mahesh : Q.Determine later if we need mask to make sure everything else other 
+                    # than labels in the data is all zeros >> Yes we dont need mask, all are zeros.
                     data = np.where((data>=50) & (data<=70), 1, data) # Liver
-                    # mask = np.where((data>=50) & (data<=70), 1, 0)
                     data = np.where((data>=110) & (data<=135), 2, data) # Right Kidney
-                    # mask = np.where((data>=110) & (data<=135), 1, 0)
                     data = np.where((data>=175) & (data<=200), 3, data) # Left Kidney
-                    # mask = np.where((data>=175) & (data<=200), 1, 0)
                     data = np.where((data>=240) & (data<=255), 4, data) # Spleen
-                    # mask = np.where((data>=240) & (data<=255), 1, 0)
-                    # data = np.where((mask==1), data, 0)
+                    
+                    # np.save('data.npy', data)
                     
                     # Mahesh : Q. Is this the right way to save the numpy array as the nifty label? >> works now after taking tanspose.
                     seg = nibabel.Nifti1Image(data, affine=np.eye(4))
@@ -203,12 +202,12 @@ class ChaosDataset(Dataset):
     def preprocess_img(self, data_path, pad, pad_sz):
         """Preprocess the nii.gz images, we need to pad to the given size when required
 
-        Args:
+        Args: 
             data_path (string): directory containing the path of nii.gz files to be preprocessed
             pad (boolean): if pad r not
             pad_sz (iterable) : desired size after padding
         """
-        # Since, Ptah().rglob returns the generator and converting the generator to the list is not stable, just iterating anyway,
+        # Since, Path().rglob returns the generator and converting the generator to the list is not stable, just iterating anyway,
         # it just returns the signle image.
         data = None
         for img in Path(data_path).rglob("*" + self.ext):
@@ -260,8 +259,8 @@ class ChaosDataset(Dataset):
             moving_seg = self.preprocess_seg(self.segpath[i[0]], pad=self.pad, pad_sz=self.size)
             fixed_seg = self.preprocess_seg(self.segpath[i[1]], pad=self.pad, pad_sz=self.size)
             assert(fixed_seg.shape==moving_seg.shape)
-            return fixedimg, fixed_seg, fixed_nopad, movingimg, moving_seg 
-        return fixedimg, fixed_nopad, movingimg
+            return fixedimg, fixed_seg, fixed_nopad, movingimg, moving_seg, index 
+        return fixedimg, fixed_nopad, movingimg, index
     
     def __len__(self):
         return self.num_samples
