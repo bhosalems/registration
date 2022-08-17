@@ -52,23 +52,23 @@ class Chaos_processor(multiprocessing.Process):
                     else:
                         phases = ['']
                     for phase in phases:
-                            record = base_record + "/" + phase
-                            print("Converting " + record + " ...")
-                            series_file_names = sitk.ImageSeriesReader.GetGDCMSeriesFileNames(record)
-                            series_reader = sitk.ImageSeriesReader()
-                            # Mahesh NOTE: sitk saved the image with the depth as first dimension. But when you read the same
-                            # image with nababel with nibabel.load().getfdata()m, it returns the image array with the desired
-                            # i.e. with the depth as last dimension.
-                            series_reader.SetFileNames(series_file_names)
-                            image3D = series_reader.Execute()
-                            output_file = "IMG-"+series_file_names[0].split("/")[-1].split("-")[1]
-                            output_file = record + "/" + output_file + ".nii.gz"
-                            sitk.WriteImage(image3D, output_file)
+                        record = base_record + "/" + phase
+                        print("Converting " + record + " ...")
+                        series_file_names = sitk.ImageSeriesReader.GetGDCMSeriesFileNames(record)
+                        series_reader = sitk.ImageSeriesReader()
+                        # Mahesh NOTE: sitk saved the image with the depth as first dimension. But when you read the same
+                        # image with nababel with nibabel.load().getfdata()m, it returns the image array with the desired
+                        # i.e. with the depth as last dimension.
+                        series_reader.SetFileNames(series_file_names)
+                        image3D = series_reader.Execute()
+                        output_file = "IMG-"+series_file_names[0].split("/")[-1].split("-")[1]
+                        output_file = record + "/" + output_file + ".nii.gz"
+                        sitk.WriteImage(image3D, output_file)
             else:
                 record = b_base_record + "/" +  "DICOM_anon"
                 if not os.path.exists(record):
-                        warnings.warn(f"Path {record} doesn't exists")
-                        continue
+                    warnings.warn(f"Path {record} doesn't exists")
+                    continue
                 print("Converting " + record + " ...")
                 # 1/T1DUAL/DICOM_anon/InPhase"
                 series_file_names = sitk.ImageSeriesReader.GetGDCMSeriesFileNames(record)
@@ -104,15 +104,20 @@ class Chaos_processor(multiprocessing.Process):
                     data = np.where((data>=110) & (data<=135), 2, data) # Right Kidney
                     data = np.where((data>=175) & (data<=200), 3, data) # Left Kidney
                     data = np.where((data>=240) & (data<=255), 4, data) # Spleen
-                    
                     # np.save('data.npy', data)
                     
                     # Mahesh : Q. Is this the right way to save the numpy array as the nifty label? >> works now after taking tanspose.
-                    seg = nibabel.Nifti1Image(data, affine=np.eye(4))
-                    print(img.absolute().as_posix().split("/")[-1].split("-")[1])
+                    # seg = nibabel.Nifti1Image(data, affine=np.eye(4))
+                    # print(img.absolute().as_posix().split("/")[-1].split("-")[1])
+                    # output_file = "IMG-" + img.absolute().as_posix().split("/")[-1].split("-")[1]
+                    # output_file = base_record + "/" + output_file + "_seg.nii.gz"
+                    # nibabel.save(seg, output_file)
+                    # seg = nibabel.load(output_file)
+                    # arr = seg.get_fdata()
+                    seg = sitk.GetImageFromArray(np.moveaxis(data, [0, 1, 2], [-1, -2, -3]))
                     output_file = "IMG-" + img.absolute().as_posix().split("/")[-1].split("-")[1]
                     output_file = base_record + "/" + output_file + "_seg.nii.gz"
-                    nibabel.save(seg, output_file)
+                    sitk.WriteImage(seg, output_file)
             else:
                 base_record = b_base_record + "/Ground"
                 data_list = []
@@ -128,11 +133,13 @@ class Chaos_processor(multiprocessing.Process):
                 data = np.where((data>=50) & (data<=70), 1, data) # Liver
                 
                 # Mahesh : Q. Is this the right way to save the numpy array as the nifty label? >> works now after taking tanspose.
-                seg = nibabel.Nifti1Image(data, affine=np.eye(4))
-                print(img.absolute().as_posix().split("/")[-3])
+                # seg = nibabel.Nifti1Image(data, affine=np.eye(4))
+                # print(img.absolute().as_posix().split("/")[-3])
+                seg = sitk.GetImageFromArray(np.moveaxis(data, [0, 1, 2], [-1, -2, -3]))
                 output_file = "IMG-" + img.absolute().as_posix().split("/")[-3]
                 output_file = base_record + "/" + output_file + "_seg.nii.gz"
-                nibabel.save(seg, output_file)
+                # nibabel.save(seg, output_file)
+                sitk.WriteImage(seg, output_file)
 
 def datasplit(rdpath='/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR', 
               savepath='/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR', n_fix=1):
@@ -323,7 +330,7 @@ def Chaos_dataloader(root_path, bsize, tr_path, tst_path, tr_modality, tr_phase,
     return train_dataloader, test_dataloader
 
 if __name__ == "__main__":
-    data_path = r"/data_local/mbhosale/CHAOS/"
+    # data_path = r"/data_local/mbhosale/CHAOS/"
     # dicom2nifty(r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR")
     # dicom2nifty(r"/data_local/mbhosale/CHAOS/CHAOS_Test_Sets/Test_Sets/MR")
     # dicom2nifty(r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[])
@@ -333,47 +340,47 @@ if __name__ == "__main__":
     # prepare_seg(r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[])
     # NOTE There's no ground truth in the test images.
     
-    c1 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
-                        num_workers=5, fid=0)
-    c2 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
-                        num_workers=5, fid=1)
-    c3 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
-                        num_workers=5, fid=2)
-    c4 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
-                        num_workers=5, fid=3)
-    c5 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
-                        num_workers=5, fid=4)
-    c1.start()
-    c2.start()
-    c3.start()
-    c4.start()
-    c5.start()
-    c1.join()
-    c2.join()
-    c3.join()
-    c4.join()
-    c5.join()
+    # c1 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
+    #                     num_workers=5, fid=0)
+    # c2 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
+    #                     num_workers=5, fid=1)
+    # c3 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
+    #                     num_workers=5, fid=2)
+    # c4 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
+    #                     num_workers=5, fid=3)
+    # c5 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
+    #                     num_workers=5, fid=4)
+    # c1.start()
+    # c2.start()
+    # c3.start()
+    # c4.start()
+    # c5.start()
+    # c1.join()
+    # c2.join()
+    # c3.join()
+    # c4.join()
+    # c5.join()
     
-    c1 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
-                        num_workers=5, fid=0)
-    c2 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
-                        num_workers=5, fid=1)
-    c3 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
-                        num_workers=5, fid=2)
-    c4 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
-                        num_workers=5, fid=3)
-    c5 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
-                        num_workers=5, fid=4)
-    c1.start()
-    c2.start()
-    c3.start()
-    c4.start()
-    c5.start()
-    c1.join()
-    c2.join()
-    c3.join()
-    c4.join()
-    c5.join()
+    # c1 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
+    #                     num_workers=5, fid=0)
+    # c2 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
+    #                     num_workers=5, fid=1)
+    # c3 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
+    #                     num_workers=5, fid=2)
+    # c4 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
+    #                     num_workers=5, fid=3)
+    # c5 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
+    #                     num_workers=5, fid=4)
+    # c1.start()
+    # c2.start()
+    # c3.start()
+    # c4.start()
+    # c5.start()
+    # c1.join()
+    # c2.join()
+    # c3.join()
+    # c4.join()
+    # c5.join()
     
     # We won't be splitting data permamenently we rather choose the pairs of fixed and moving images, similar to msd dataloader.
     # datasplit(rdpath='/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR', 
@@ -393,3 +400,4 @@ if __name__ == "__main__":
     
     # for _, samples in enumerate(test_dataloader):
     #     print(samples[0].shape)
+    print("Finished")

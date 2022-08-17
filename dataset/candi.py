@@ -19,7 +19,7 @@ class CANDIDataset(Dataset):
         self.mode = mode
         self.label = [2,3,4,7,8,10,11,12,13,14,15,16,17,18,24,28,\
             41,42,43,46,47,49,50,51,52,53,54,60]
-        self.dice_labels = self.label
+        self.dice_labels = [i for i in range(0, len(self.label)+1)]
         #fix
         for fixpath in os.listdir(f'{datapath}/fix'):
             self.fiximg = self.preprocess_img(f'{datapath}/fix/{fixpath}/anat/NIfTI/anat.nii.gz')
@@ -71,7 +71,7 @@ class CANDIDataset(Dataset):
     def __getitem__(self, idx):
         image = self.preprocess_img(self.imgpath[idx])
         seg = self.preprocess_seg(self.segpath[idx])
-        return self.fiximg, self.fixseg, image, seg
+        return self.fiximg, self.fixseg, image, seg, idx
 
 def datasplit(rdpath='~/data/CANDI_new', savepth='~/data/CANDI_split', n_fix=1, n_test=20):
     rdpath = os.path.expanduser(rdpath)

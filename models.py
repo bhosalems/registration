@@ -320,7 +320,9 @@ class RegNet(nn.Module):
                 mask = fix_nopad.bool()
                 sim_mask = sim_mask*mask
             sloss = sim_loss
-            if sloss*-1 >= 0.10:
+            
+            # Mahesh : If similarity loss is greater than 50%, we will convert tensors to nifti fro visualization.
+            if sloss*-1 >= 0.60:
                 fnames = []
                 fnames.append(seg_fname+"true.nii.gz")
                 fnames.append(seg_fname+"warp.nii.gz")

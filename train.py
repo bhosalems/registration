@@ -82,6 +82,8 @@ class TrainModel():
         logging.info("Evaluation started")
         idx = 0
         for _, samples in enumerate(self.test_dataloader):
+            p = int(samples[-1])
+            samples = samples[:-1]
             fixed, fixed_label, moving, moving_label, fixed_nopad = self.data_extract(samples)
             dice = self.model.forward(fixed, moving,  fixed_label, moving_label, fixed_nopad, rtloss=False, eval=True, 
                                       seg_fname='seg_imgs/vale'+str(epoch)+'idx'+str(idx), dice_labels=self.train_dataloader.dataset.dice_labels)
@@ -102,12 +104,10 @@ class TrainModel():
             p = int(samples[-1])
             samples = samples[:-1]
             fixed, fixed_label, moving, moving_label, fixed_nopad = self.data_extract(samples)
-            # torch.save(fixed, 'fixed.pt')
-            # torch.save(moving, 'moving.pt')
             self.global_idx += 1
             self.cur_idx = idx
-            print(self.train_dataloader.dataset.pairs[p][1])
-            seg_fname = self.train_dataloader.dataset.imgpath[self.train_dataloader.dataset.pairs[p][1]].split('/')[-4]
+            # seg_fname = self.train_dataloader.dataset.imgpath[self.train_dataloader.dataset.pairs[p][1]].split('/')[-4]
+            seg_fname = self.train_dataloader.dataset.imgpath[p].split('/')[-4]
             logging.info(f'iteration={idx}/{len(self.train_dataloader)}')
             trloss, trdice = self.trainIter(fixed, moving, fixed_label, moving_label, fixed_nopad=fixed_nopad, seg_f=seg_fname)
             optimizer.zero_grad()
