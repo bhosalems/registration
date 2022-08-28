@@ -12,10 +12,11 @@ from pathlib import Path
 import imageio
 import SimpleITK as sitk
 
-def tensor2nii(pred, true, fnames, mode, one_hot=True):
+def tensor2nii(pred, true, fnames, mode, one_hot=True, flow=None):
         assert(len(fnames)>=2)        
         assert(len(pred.shape)==5)
         assert(len(true.shape)==5)
+
         if mode == 'seg':
             if one_hot:
                 true = torch.max(true.detach().cpu(), dim=1)[1]
@@ -45,9 +46,14 @@ def tensor2nii(pred, true, fnames, mode, one_hot=True):
         else:
             assert(fnames[0].split('.')[-2] + fnames[0].split('.')[-1] == 'niigz')
             assert(fnames[1].split('.')[-2] + fnames[1].split('.')[-1] == 'niigz')
-            
             pred = pred.detach().cpu()[0, 0, ...].permute(2, 1, 0).numpy()
             true = true.detach().cpu()[0, 0, ...].permute(2, 1, 0).numpy()
+            if flow is not None:
+                assert(fnames[2].split('.')[-2] + fnames[2].split('.')[-1] == 'niigz')
+                assert(len(flow.shape)==5)
+                flow = flow.detach().cpu()[0, 0, ...].permute(2, 1, 0).numpy()
+                flow = sitk.GetImageFromArray(flow)
+                sitk.WriteImage(flow, fnames[2])
             true = sitk.GetImageFromArray(true)
             pred = sitk.GetImageFromArray(pred)
             sitk.WriteImage(true, fnames[0])
@@ -57,14 +63,17 @@ class SpatialTransformer(nn.Module):
     def __init__(self, size, mode='bilinear'):
         super(SpatialTransformer, self).__init__()
         zero = torch.cat([torch.eye(3), torch.zeros([3,1])], 1)[None]
-        self.meshgrid = nn.Parameter(nnf.affine_grid(zero, [1, 1, *size], align_corners=False), requires_grad=False)
+        b = nnf.affine_grid(zero, [1, 1, *size], align_corners=False)
+        self.meshgrid = nn.Parameter(nnf.affine_grid(zero, [1, 1, *size], align_corners=False), requires_grad=False) # Apparently affine grid calculates 
+        # the sampling grid, i.e. it applies theta transform to get the sampling points.
         self.mode = mode
 
     def forward(self, src, flow):
         flow = flow.permute(0, 2, 3, 4, 1)
-        new_locs = self.meshgrid + flow
+        new_locs = self.meshgrid + flow # at each iteration it refines the flow ?
         self.new_locs = new_locs
-        return nnf.grid_sample(src, new_locs, mode=self.mode, align_corners=False)
+        return nnf.grid_sample(src, new_locs, mode=self.mode, align_corners=False) # Grid sampling actually does 
+        # sampling from the flow and gives you the output 
 
 class conv_block(nn.Module):
     """
@@ -296,7 +305,7 @@ class RegNet(nn.Module):
     # use the labels for calculating the DICE scores.
     def forward(self, fix, moving, fix_label, moving_label, fix_nopad=None, rtloss=True, eval=True, dice_labels=[0, 1, 2, 3, 4], 
                 seg_fname = None):
-        x = torch.cat([moving,fix], dim = 1)
+        x = torch.cat([moving, fix], dim = 1)
         unet_out = self.unet(x)
         save_nii = False
         # Mahesh : Q. Output of the displacement flow here is [1, Number of channels, height, width, depth], 
@@ -306,8 +315,8 @@ class RegNet(nn.Module):
         if rtloss:
             warp = self.spatial_transformer_network(moving, flow)
             if fix_nopad is not None:
-                fix = fix*fix_nopad
-                warp = warp*fix_nopad
+                fix = fix * fix_nopad
+                warp = warp * fix_nopad
             sim_loss, sim_mask = ncc_loss(warp, fix, reduce_mean=False, winsize=self.winsize) #[0,1]
             if sim_mask.any():
                 sim_loss = sim_loss[sim_mask].mean()
@@ -322,11 +331,16 @@ class RegNet(nn.Module):
             sloss = sim_loss
             
             # Mahesh : If similarity loss is greater than 50%, we will convert tensors to nifti fro visualization.
-            if sloss*-1 >= 0.60:
+            if sloss*-1 >= 0.50:
+                fnames = []
+                fnames.append(seg_fname+"true.nii.gz")
+                fnames.append(seg_fname+"warp_org.nii.gz")
+                tensor2nii(moving, fix, fnames, mode='volume', one_hot=True, flow=None)
                 fnames = []
                 fnames.append(seg_fname+"true.nii.gz")
                 fnames.append(seg_fname+"warp.nii.gz")
-                tensor2nii(warp, fix, fnames, mode='volume', one_hot=True)
+                fnames.append(seg_fname+"flow.nii.gz")
+                tensor2nii(warp, fix, fnames, mode='volume', one_hot=True, flow=flow)
                 save_nii = True
             if eval:
                 dice = self.eval_dice(fix_label, moving_label, flow, fix_nopad, seg_fname=seg_fname, save_nii=save_nii)

@@ -41,6 +41,7 @@ def NIISplit(img_path, label_path, dataset = 'hippocampus', mode = 'vm', train =
             test_filenames.append(file)
         else:
             train_filenames.append(file)
+
     # import ipdb; ipdb.set_trace()
     if trainseg:
         train_seg_data = NIIDatasetTestSeg(imgpath=img_path, labelpath =label_path, 
@@ -75,8 +76,9 @@ def MSD_dataloader(dataset, bsize, num_workers, datapath='~/data/MSD', tr_percen
     labelpath =  f'{datapath}/{dataset}/all/labels'
     
     train_data, val_seg_data, val_reg_data = NIISplit(
-        imgpath, labelpath, mode = 'vm', train =1, valseg=testseg, valreg=testreg, divide = None,
+        imgpath, labelpath, mode = 'vm', train=1, valseg=testseg, valreg=testreg, divide = None,
         tr_percent = tr_percent, dataset = dataset, bootstrap_prop=1)
+    
     # import ipdb; ipdb.set_trace()
     logging.info(f'Train pairs:{len(train_data)}')
     train_dataloader = torch.utils.data.DataLoader(
@@ -106,6 +108,7 @@ class NIIDatasetPaired(Dataset):
         self.labelpath = labelpath
         self.filenames = filenames
         n = len(self.filenames)
+        self.dice_labels = [0, 1, 2, 3]
         if tr_percent<1:
             # n = int(n*tr_percent)
             n=4
@@ -115,9 +118,12 @@ class NIIDatasetPaired(Dataset):
         # import ipdb; ipdb.set_trace()
         # if (divide is not None) and (self.pairs is not None):
         if (divide is not None):
-            max_below = divide*(len(self.pairs)//divide)
-            logging.info(f'{len(self.pairs)}divide by{divide} to get {max_below}')
+            # max_below = divide*(len(self.pairs)//divide)
+            # logging.info(f'{len(self.pairs)}divide by{divide} to get {max_below}')
+            # self.pairs = self.pairs[:max_below]
+            max_below = 10
             self.pairs = self.pairs[:max_below]
+        
         # import ipdb; ipdb.set_trace()
         self.mode = mode
         self.initdata = initdata
@@ -162,11 +168,11 @@ class NIIDatasetPaired(Dataset):
             moving_data, moving_nopad = preprocess(data_path, isimg = True, padsize=self.pad_size)
             moving_label, _ = preprocess(label_path, isimg = False, padsize=self.pad_size)
         if self.mode == 'vm':
-            return fixed_data, fixed_label, fix_nopad, moving_data, moving_label
+            return fixed_data, fixed_label, fix_nopad, moving_data, moving_label, idx
         else:
             fix2, fix2_label, fix2_nopad, displacement = random_transform(
                 moving_data, moving_label, moving_nopad, rot=1, scale=1, translate=1)
-            return fixed_data, fixed_label, fix_nopad, moving_data, moving_label, fix2, fix2_label, fix2_nopad, displacement
+            return fixed_data, fixed_label, fix_nopad, moving_data, moving_label, fix2, fix2_label, fix2_nopad, displacement, idx
 
         
         # fixed_data2, fixed_label2, displacement = random_transform(self.moving_data, self.moving_label)
@@ -320,12 +326,9 @@ def pad(x, shape):
 def normalize(x):
     mean = np.mean(x)
     std = np.std(x, ddof=1)
-    #std_arr = np.sqrt(np.abs(x-mean)/x.size)
     maxp = mean + 6*std
     minp = mean - 6*std
     y = np.clip(x, minp, maxp)
-    #import ipdb; ipdb.set_trace()
-    #linear transform to [0,1]
     z = (y-y.min())/y.max()
     return z
 

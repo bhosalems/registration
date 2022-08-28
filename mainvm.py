@@ -21,7 +21,7 @@ from models import RegNet
 import math
 
 CANDI_PATH = '/data_local/mbhosale/CANDI_split'
-MSD_PATH = r'C:\Users\mahes\Desktop\UB\Thesis\Img registration\registration\dataset\MSD'
+MSD_PATH = '/data_local/mbhosale/MSD'
 IXI_PATH = r'/home/csgrad/mbhosale/Image_registration/TransMorph_Transformer_for_Medical_Image_Registration/IXI/IXI_data/'
 BraTS_PATH = r'/home/csgrad/mbhosale/Image_registration/datasets/BraTS2018'
 BraTS_save_PATH = r'/home/csgrad/mbhosale/Image_registration/datasets/BraTS2018/'
@@ -61,7 +61,7 @@ if __name__ == "__main__":
     
     handlers = [logging.StreamHandler()]
     if args.debug:
-        logfile = f'debug_081722_CANDI_test_original'
+        logfile = f'debug_082822_CHAOS_test'
     else:
         logfile = f'{args.logfile}-{datetime.now().strftime("%m%d%H%M")}'
     handlers.append(logging.FileHandler(
@@ -110,7 +110,7 @@ if __name__ == "__main__":
         tst_path = CHAOS_PATH + r"CHAOS_Train_Sets/Train_Sets/MR/"
         train_dataloader, test_dataloader = chaos.Chaos_dataloader(root_path=CHAOS_PATH,  tr_path=tr_path, tst_path=tst_path, 
                                                          bsize=1, tr_modality='T1DUAL', tr_phase='InPhase', tst_modality='T1DUAL', 
-                                                         tst_phase='OutPhase', size=[400, 400, 50], data_split=False, n_fix=1, tr_num_samples=0, 
+                                                         tst_phase='InPhase', size=[400, 400, 50], data_split=False, n_fix=1, tr_num_samples=0, 
                                                          tst_num_samples=10)
         if pad_size[-1]%downsample_rate != 0:
             orig_size = pad_size

@@ -106,8 +106,9 @@ class TrainModel():
             fixed, fixed_label, moving, moving_label, fixed_nopad = self.data_extract(samples)
             self.global_idx += 1
             self.cur_idx = idx
-            # seg_fname = self.train_dataloader.dataset.imgpath[self.train_dataloader.dataset.pairs[p][1]].split('/')[-4]
-            seg_fname = self.train_dataloader.dataset.imgpath[p].split('/')[-4]
+            # seg_fname = self.train_dataloader.dataset.filenames[self.train_dataloader.dataset.pairs[p][1]].split('.')[-3]
+            seg_fname = self.train_dataloader.dataset.imgpath[self.train_dataloader.dataset.pairs[p][1]].split('/')[-4]
+            # seg_fname = self.train_dataloader.dataset.imgpath[p].split('/')[-4]
             logging.info(f'iteration={idx}/{len(self.train_dataloader)}')
             trloss, trdice = self.trainIter(fixed, moving, fixed_label, moving_label, fixed_nopad=fixed_nopad, seg_f=seg_fname)
             optimizer.zero_grad()
