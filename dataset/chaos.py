@@ -194,7 +194,7 @@ class ChaosDataset(Dataset):
             self.num_samples = len(self.pairs)
         
         
-    def zero_pad(self, data, value=0):
+    def zero_pad(self, data):
         orig_size = data.shape
         c_dim = orig_size[-1]
         pad_sz = abs(c_dim - (math.ceil(c_dim/self.downsample_rate)*self.downsample_rate))
@@ -215,7 +215,7 @@ class ChaosDataset(Dataset):
         s_y = math.floor((shape[1] - x.shape[1])/2)
         s_z = math.floor((shape[2] - x.shape[2])/2)
         new_x = np.zeros(shape)
-        new_x[s_x:s_x+x.shape[0],s_y: s_y + x.shape[1], s_z:s_z + x.shape[2]] = x
+        new_x[s_x:s_x+x.shape[0],s_y:s_y+x.shape[1], s_z:s_z+x.shape[2]] = x
         #save_index = [s_x, x.shape[0], s_y, x.shape[1], s_z, x.shape[2]]
         nopad = np.zeros_like(new_x)
         nopad[s_x:s_x+x.shape[0],s_y: s_y + x.shape[1], s_z:s_z + x.shape[2]] = 1
@@ -252,7 +252,7 @@ class ChaosDataset(Dataset):
             s_y = math.floor((pad_sz[1] - data.shape[1])/2)
             s_z = math.floor((pad_sz[2] - data.shape[2])/2)
             new_x = np.zeros(pad_sz)
-            new_x[s_x:s_x+data.shape[0], s_y: s_y + data.shape[1], s_z:s_z + data.shape[2]] = data
+            new_x[s_x:s_x+data.shape[0], s_y:s_y + data.shape[1], s_z:s_z + data.shape[2]] = data
             #save_index = [s_x, x.shape[0], s_y, x.shape[1], s_z, x.shape[2]]
             nopad = np.zeros_like(new_x)
             nopad[s_x:s_x+data.shape[0], s_y: s_y + data.shape[1], s_z:s_z + data.shape[2]] = 1
@@ -297,8 +297,7 @@ class ChaosDataset(Dataset):
                 s_z = math.floor((pad_sz[2] - data.shape[2])/2)
                 new_x = np.zeros(pad_sz)
                 new_x[s_x:s_x + data.shape[0], s_y:s_y + data.shape[1], s_z:s_z + data.shape[2]] = data
-                data = new_x
-                
+                data = new_x        
         return data
 
 def Chaos_dataloader(root_path, bsize, tr_path, tst_path, tr_modality, tr_phase, tst_modality, tst_phase, 

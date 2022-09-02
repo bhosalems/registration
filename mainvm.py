@@ -105,6 +105,7 @@ if __name__ == "__main__":
         # we are not using any other loss function such as cross entropy loss which takes in number of classes as an arguemnt.
         NUM_CLASS = 4
     elif args.dataset == 'CHAOS':
+        # Mahesh : The x-y size of the images is caculated based on maximum z-y size of the dicom images.
         pad_size = [400, 400, 50]
         tr_path = CHAOS_PATH + r"CHAOS_Train_Sets/Train_Sets/MR/"
         tst_path = CHAOS_PATH + r"CHAOS_Train_Sets/Train_Sets/MR/"
