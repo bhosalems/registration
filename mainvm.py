@@ -61,7 +61,7 @@ if __name__ == "__main__":
     
     handlers = [logging.StreamHandler()]
     if args.debug:
-        logfile = f'debug_082822_CHAOS_test'
+        logfile = f'debug_090722_CHAOS_grad_vis_with_single_pairs'
     else:
         logfile = f'{args.logfile}-{datetime.now().strftime("%m%d%H%M")}'
     handlers.append(logging.FileHandler(
@@ -117,7 +117,7 @@ if __name__ == "__main__":
             orig_size = pad_size
             c_dim = orig_size[-1]
             pad_size[-1] += abs(c_dim - (math.ceil(c_dim/downsample_rate)*downsample_rate))      
-        window_r = 5
+        window_r = 11
         # Mahesh : Should the mumber of classes be one more than total number of classes? As required for some of the loss functions etc. >> No Need, 
         # we are not using any other loss function such as cross entropy loss which takes in number of classes as an arguemnt.
         NUM_CLASS = 5

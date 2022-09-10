@@ -266,7 +266,8 @@ class ChaosDataset(Dataset):
         return data, nopad
     
     def __getitem__(self, index):
-        i = self.pairs[index]
+        # i = self.pairs[index] # TODO revert mack by uncommentung this line.
+        i = self.pairs[0] # Just for debugging using same pair of fixed and moving images over and over epochs.
         movingimg, moving_nopad = self.preprocess_img(self.imgpath[i[0]], pad=self.pad, pad_sz=self.size)
         fixedimg, fixed_nopad = self.preprocess_img(self.imgpath[i[1]], pad=self.pad, pad_sz=self.size)
         assert(movingimg.shape==fixedimg.shape)

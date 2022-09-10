@@ -266,7 +266,7 @@ class RegNet(nn.Module):
         # Mahesh : Q. Output of the displacement flow here is [1, Number of channels, height, width, depth], 
         # but our labels as well as moving has a single channel, should this be an issue? Check the transmorph code here.
         flow = self.conv(unet_out)
-
+         
         if rtloss:
             warp = self.spatial_transformer_network(moving, flow)
             if fix_nopad is not None:
@@ -286,16 +286,23 @@ class RegNet(nn.Module):
             sloss = sim_loss
             
             # Mahesh : If similarity loss is greater than 50%, we will convert tensors to nifti fro visualization.
-            if sloss*-1 >= 0.50:
-                # fnames = []
-                # fnames.append(seg_fname+"true.nii.gz")
-                # fnames.append(seg_fname+"warp_org.nii.gz")
-                # tensor2nii(moving, fix, fnames, mode='volume', one_hot=True, flow=None)
+            if sloss*-1 >= 0.80:
                 fnames = []
                 fnames.append(seg_fname+"true.nii.gz")
                 fnames.append(seg_fname+"warp.nii.gz")
                 fnames.append(seg_fname+"flow.nii.gz")
-                tensor2nii(warp, fix, fnames, mode='volume', one_hot=True, flow=flow)
+                grid_flow = None
+                grid = mk_grid_img((400, 400, 64, 1, 3), 16, 1) # Mahesh : Somehow flow.shape doesnt work because 
+                # max and min we get in flow_asrgb() both get value of 1. To overcome, passing hardcoded temporarily,
+                # the axis along which max() and min() is taken will fix the issue.
+                grid = np.moveaxis(grid, [3, 4], [-5, -4])
+                grid = torch.tensor(grid, device=flow.device, dtype=flow.dtype)
+                grid_flow = self.spatial_transformer_network(grid, flow)
+                grid_flow = grid_flow.squeeze(0)
+                if grid_flow is not None:
+                    fnames.append(seg_fname+"grid_flow.png")
+                flow_as_rgb(grid_flow.detach().cpu().numpy(), 8, fname=fnames[-1])
+                tensor2nii(warp, fix, fnames, mode='volume', one_hot=True, flow=flow, grid_flow=None)
                 save_nii = True
             if eval:
                 dice = self.eval_dice(fix_label, moving_label, flow, fix_nopad, seg_fname=seg_fname, save_nii=save_nii)

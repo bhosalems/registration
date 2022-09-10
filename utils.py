@@ -8,8 +8,104 @@ from pathlib import Path
 import imageio
 import SimpleITK as sitk
 import nibabel as nib
+import matplotlib.pyplot as plt
 
-def tensor2nii(pred, true, fnames, mode, one_hot=True, flow=None):
+# Running this function separatellt once the flow is saved.
+def flow_as_rgb(org_flow, num_slices, fname='foo.png'):
+    total_slices = org_flow.shape[3]
+    slice_interval = total_slices//num_slices
+    
+    if num_slices % 4 == 0:
+        f, axarr = plt.subplots((num_slices)//4, 4, sharey=True, figsize=(15, 15))
+    else:
+        f, axarr = plt.subplots((num_slices//4) + 1, 4, sharey=True, figsize=(15, 15))
+    i = 0 
+    axarr = axarr.flatten()
+    
+    slices = list(range(0, total_slices, slice_interval))
+    for ax in axarr:
+        flow = org_flow[:, :, :, slices[i]]
+        flow_rgb = np.zeros((flow.shape[1], flow.shape[2], 3))
+        for c in range(3):
+            flow_rgb[..., c] = flow[c, :, :]
+        lower = np.percentile(flow_rgb, 2)
+        upper = np.percentile(flow_rgb, 98)
+        flow_rgb[flow_rgb < lower] = lower
+        flow_rgb[flow_rgb > upper] = upper
+        flow_rgb = (((flow_rgb - flow_rgb.min()) / (flow_rgb.max() - flow_rgb.min())))
+        # plt.figure()
+        ax.imshow(flow_rgb, vmin=0, vmax=1)
+        ax.axis('off')
+        i+=1
+    # plt.show()
+    plt.savefig(fname)
+
+def ndgrid(*args, **kwargs):
+    """
+    Disclaimer: This code is taken directly from the scitools package [1]
+    Since at the time of writing scitools predominantly requires python 2.7 while we work with 3.5+
+    To avoid issues, we copy the quick code here.
+    Same as calling ``meshgrid`` with *indexing* = ``'ij'`` (see
+    ``meshgrid`` for documentation).
+    Ref : https://github.com/adalca/pystrum/blob/0e7a47e5cc62725dfadc728351b89162defca696/pystrum/pynd/ndutils.py#L208
+    """
+    kwargs['indexing'] = 'ij'
+    return np.meshgrid(*args, **kwargs)
+
+def bw_grid(vol_shape, spacing, thickness=1):
+    """
+    draw a black and white ND grid.
+    Ref : https://github.com/adalca/pystrum/blob/0e7a47e5cc62725dfadc728351b89162defca696/pystrum/pynd/ndutils.py#L208
+    Parameters
+    ----------
+        vol_shape: expected volume size
+        spacing: scalar or list the same size as vol_shape
+    Returns
+    -------
+        grid_vol: a volume the size of vol_shape with white lines on black background
+    """
+
+    # check inputs
+    if not isinstance(spacing, (list, tuple)):
+        spacing = [spacing] * len(vol_shape)
+    spacing = [f + 1 for f in spacing]
+    assert len(vol_shape) == len(spacing)
+
+    # go through axes
+    grid_image = np.zeros(vol_shape)
+    for d, v in enumerate(vol_shape):
+        rng = [np.arange(0, f) for f in vol_shape]
+        for t in range(thickness):
+            rng[d] = np.append(np.arange(0 + t, v, spacing[d]), -1)
+            grid_image[ndgrid(*rng)] = 1
+
+    return grid_image
+def mk_grid_img(shp, grid_step, line_thickness=1):
+    grid_img = np.zeros(shp)
+    for j in range(0, grid_img.shape[1], grid_step):
+        grid_img[:, j+line_thickness-1, :] = 1
+    for i in range(0, grid_img.shape[0], grid_step):
+        grid_img[i+line_thickness-1, :, :] = 1
+    return grid_img
+# def mk_grid_img(shp, grid_step, line_thickness=1):
+#     """Returns black and white grid of the given shape with given thickness and takes steps in the lines.
+#     Ref:https://github.com/junyuchen245/TransMorph_Transformer_for_Medical_Image_Registration/issues/14 
+#     Args:
+#         shp (_type_): shape of te volume.
+#         grid_step (_type_): number of steps.
+#         line_thickness (int, optional): thickness of line. Defaults to 1.
+
+#     Returns:
+#         _type_: frid of given shape.
+#     """
+#     grid_img = np.zeros(shp)
+#     for j in range(0, grid_img.shape[1], grid_step):
+#         grid_img[:, j+line_thickness-1, :] = 1
+#     for i in range(0, grid_img.shape[0], grid_step):
+#         grid_img[i+line_thickness-1, :, :] = 1
+#     return grid_img
+
+def tensor2nii(pred, true, fnames, mode, one_hot=True, flow=None, grid_flow=None):
         assert(len(fnames)>=2)        
         assert(len(pred.shape)==5)
         assert(len(true.shape)==5)
@@ -51,31 +147,18 @@ def tensor2nii(pred, true, fnames, mode, one_hot=True, flow=None):
                 flow = flow.detach().cpu()[0, ...].permute(3, 2, 1, 0).numpy() # Mahesh : Should this resize be (1, 2, 3, 0)?
                 flow = sitk.GetImageFromArray(flow)
                 sitk.WriteImage(flow, fnames[2])
-                
+            
+            if grid_flow is not None:
+                assert(fnames[3].split('.')[-2] + fnames[3].split('.')[-1] == 'niigz')
+                assert(len(grid_flow.shape)==5)
+                grid_flow = grid_flow.detach().cpu()[0, ...].permute(3, 2, 1, 0).numpy() # Mahesh : Should this resize be (1, 2, 3, 0)?
+                grid_flow = sitk.GetImageFromArray(grid_flow)
+                sitk.WriteImage(grid_flow, fnames[3])
+            
             true = sitk.GetImageFromArray(true)
             pred = sitk.GetImageFromArray(pred)
             sitk.WriteImage(true, fnames[0])
             sitk.WriteImage(pred, fnames[1])
-
-def save_rgbflow(flow, slice_num):
-    """saved rgb flow. flow should have dimensions (C, H, W, D).
-    Args:
-        flow (_type_): deformation field flow
-        slice_num (_type_): slice number in the depth
-    """
-    flow = flow[:, :, :, slice_num]
-    flow_rgb = np.zeros((flow.shape[1], flow.shape[2], 3))
-    for c in range(3):
-        flow_rgb[..., c] = flow[c, :, :]
-    lower = np.percentile(flow_rgb, 2)
-    upper = np.percentile(flow_rgb, 98)
-    flow_rgb[flow_rgb < lower] = lower
-    flow_rgb[flow_rgb > upper] = upper
-    flow_rgb = (((flow_rgb - flow_rgb.min()) / (flow_rgb.max() - flow_rgb.min())))
-    plt.figure()
-    plt.imshow(flow_rgb, vmin=0, vmax=1)
-    plt.axis('off')
-    plt.show()
 
 def nib_load(file_name):
     if not os.path.exists(file_name):
