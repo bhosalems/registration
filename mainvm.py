@@ -61,7 +61,7 @@ if __name__ == "__main__":
     
     handlers = [logging.StreamHandler()]
     if args.debug:
-        logfile = f'debug_090722_CHAOS_grad_vis_with_single_pairs'
+        logfile = f'debug_092622_external_preprocessing_-11'
     else:
         logfile = f'{args.logfile}-{datetime.now().strftime("%m%d%H%M")}'
     handlers.append(logging.FileHandler(
@@ -106,18 +106,19 @@ if __name__ == "__main__":
         NUM_CLASS = 4
     elif args.dataset == 'CHAOS':
         # Mahesh : The x-y size of the images is caculated based on maximum z-y size of the dicom images.
-        pad_size = [400, 400, 50]
-        tr_path = CHAOS_PATH + r"CHAOS_Train_Sets/Train_Sets/MR/"
-        tst_path = CHAOS_PATH + r"CHAOS_Train_Sets/Train_Sets/MR/"
+        pad_size = [256, 256, 50]
+        tr_path = CHAOS_PATH + r"CHAOS_Train_Sets/Train_Sets/MR"
+        tst_path = CHAOS_PATH + r"CHAOS_Train_Sets/Train_Sets/MR" # we are choosing train dataset as test because we dont have ground truth in the test
+        # TODO But we can change the test modality, but for now we have kept it same 
         train_dataloader, test_dataloader = chaos.Chaos_dataloader(root_path=CHAOS_PATH,  tr_path=tr_path, tst_path=tst_path, 
                                                          bsize=1, tr_modality='T1DUAL', tr_phase='InPhase', tst_modality='T1DUAL', 
-                                                         tst_phase='InPhase', size=[400, 400, 50], data_split=False, n_fix=1, tr_num_samples=0, 
+                                                         tst_phase='InPhase', size=pad_size, data_split=False, n_fix=1, tr_num_samples=0, 
                                                          tst_num_samples=10)
         if pad_size[-1]%downsample_rate != 0:
             orig_size = pad_size
             c_dim = orig_size[-1]
             pad_size[-1] += abs(c_dim - (math.ceil(c_dim/downsample_rate)*downsample_rate))      
-        window_r = 11
+        window_r = 9
         # Mahesh : Should the mumber of classes be one more than total number of classes? As required for some of the loss functions etc. >> No Need, 
         # we are not using any other loss function such as cross entropy loss which takes in number of classes as an arguemnt.
         NUM_CLASS = 5
@@ -151,6 +152,3 @@ if __name__ == "__main__":
 
     if tb is not None:
         tb.close()
-
-    
-    

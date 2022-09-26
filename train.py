@@ -30,9 +30,9 @@ class TrainModel():
         self.savepath = savepath
         #
     def trainIter(self, fix, moving, fixed_label, moving_label, fixed_nopad=None, seg_f=None):
-        if not os.path.exists('seg_imgs_grad_vis_single_pair'):
-            os.mkdir('seg_imgs_grad_vis_single_pair')
-        seg_fname = "seg_imgs_grad_vis_single_pair/e"+str(self.cur_epoch)+"idx"+str(self.cur_idx)
+        if not os.path.exists('seg_imgs_external_prepeocessing_01'):
+            os.mkdir('seg_imgs_external_prepeocessing_01')
+        seg_fname = "seg_imgs_external_prepeocessing_01/e"+str(self.cur_epoch)+"idx"+str(self.cur_idx)
         if seg_f is not None:
             seg_fname = seg_fname + "_" + seg_f
         sim_loss, grad_loss, dice = self.model.forward(fix, moving, fixed_label, moving_label, fix_nopad=fixed_nopad, 
@@ -41,7 +41,7 @@ class TrainModel():
         sim_loss, grad_loss, dice = sim_loss.mean(), grad_loss.mean(), dice.mean()
         loss = float(self.args.weight[0])*sim_loss + float(self.args.weight[1])*grad_loss
         if self.global_idx%self.printfreq ==0:
-            logging.info(f'simloss={sim_loss}, gradloss={grad_loss}, loss={loss}, dice={(dice*100):2f}')
+            logging.info(f'simloss={sim_loss}, segfname={seg_f}, gradloss={grad_loss}, loss={loss}, dice={(dice*100):2f}')
         if self.tb is not None:
             self.tb.add_scalar("train/loss", loss.item(), self.global_idx)
             self.tb.add_scalar("train/grad_loss", grad_loss.item(), self.global_idx)
@@ -86,7 +86,7 @@ class TrainModel():
             samples = samples[:-1]
             fixed, fixed_label, moving, moving_label, fixed_nopad = self.data_extract(samples)
             dice = self.model.forward(fixed, moving,  fixed_label, moving_label, fixed_nopad, rtloss=False, eval=True, 
-                                      seg_fname='seg_imgs_grad_vis_single_pair/vale'+str(epoch)+'idx'+str(idx), dice_labels=self.train_dataloader.dataset.dice_labels)
+                                      seg_fname='seg_imgs_external_prepeocessing_01/vale'+str(epoch)+'idx'+str(idx), dice_labels=self.train_dataloader.dataset.dice_labels)
             dice = dice.mean()
             tst_dice.update(dice.item())
             idx+=1
