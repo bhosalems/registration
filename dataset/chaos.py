@@ -13,6 +13,7 @@ import nibabel
 import itertools
 import imageio
 import multiprocessing
+import cv2
 
 # Chaos is in the DICOM file format but we need to conver it into the nifty file format which we understand
 class Chaos_processor(multiprocessing.Process):
@@ -55,7 +56,10 @@ class Chaos_processor(multiprocessing.Process):
                         # i.e. with the depth as last dimension.
                         series_reader.SetFileNames(series_file_names)
                         image3D = series_reader.Execute()
-                        output_file = "IMG-"+series_file_names[0].split("/")[-1].split("-")[1]
+                        if modality==self.modalities[0]:
+                            output_file = "IMG-"+series_file_names[0].split("/")[-5]
+                        else:
+                            output_file = "IMG-"+series_file_names[0].split("/")[-4]
                         output_file = record + "/" + output_file + ".nii.gz"
                         sitk.WriteImage(image3D, output_file)
             else:
@@ -109,7 +113,7 @@ class Chaos_processor(multiprocessing.Process):
                     # seg = nibabel.load(output_file)
                     # arr = seg.get_fdata()
                     seg = sitk.GetImageFromArray(np.moveaxis(data, [0, 1, 2], [-1, -2, -3]))
-                    output_file = "IMG-" + img.absolute().as_posix().split("/")[-1].split("-")[1]
+                    output_file = "IMG-" + img.absolute().as_posix().split("/")[-4]
                     output_file = base_record + "/" + output_file + "_seg.nii.gz"
                     sitk.WriteImage(seg, output_file)
             else:
@@ -236,15 +240,35 @@ class ChaosDataset(Dataset):
             data = nibabel.load(img)
             data = np.array(data.get_fdata())
         
-        # Mahesh : Q. Should we normalize the images ? What other processing is needed here?
-        #normalize
+        # resize
+        # height = pad_sz[0]
+        # width = pad_sz[1]
+        # data_resized = np.zeros((height, width, data.shape[2]))
+        # for idx in range(data.shape[2]):
+        #     tmp_img = data[:, :, idx]
+        #     tmp_img = cv2.resize(tmp_img, (256, 256), interpolation=cv2.INTER_CUBIC)
+        #     data_resized[:, :, idx] = tmp_img
+        # data = data_resized
+        
+        # normalize
+        # mean = np.mean(data)
+        # std = np.std(data, ddof=1)
+        # maxp = mean + 6*std
+        # minp = mean - 6*std
+        # num_mins = (data < minp).sum()
+        # num_maxs = (data > maxp).sum() 
+        # print("data min\n" + str(data.min()))
+        # print("data max\n" + str(data.max()))
+        # y = np.clip(data, minp, maxp)
+        # z = (y-y.min())/y.max()
+        # data = z
+        # print("clipped percentage {}".format(((num_mins + num_maxs) * 100)/(data.shape[0]*data.shape[1]*data.shape[2])))
         mean = np.mean(data)
         std = np.std(data, ddof=1)
-        maxp = mean + 6*std
-        minp = mean - 6*std
-        y = np.clip(data, minp, maxp)
-        z = (y-y.min())/y.max()
+        z = (data-mean)/std
+        z = np.clip(z, -1.0, 1.0)
         data = z
+        
         if pad:
             # Mahesh : Q. Why was it called fixed_nopad before? Am I missing mosmething, it appears it should be same for both the 
             # fixed and the moving image.
@@ -266,14 +290,20 @@ class ChaosDataset(Dataset):
         return data, nopad
     
     def __getitem__(self, index):
-        # i = self.pairs[index] # TODO revert mack by uncommentung this line.
-        i = self.pairs[0] # Just for debugging using same pair of fixed and moving images over and over epochs.
+        i = self.pairs[index] # TODO revert back by uncommentung this line.
+        # i = self.pairs[0] # Just for debugging using same pair of fixed and moving images over and over epochs.
+        # fixed_img = '/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR/34/T1DUAL/DICOM_anon/InPhase/'
+        # moving_img = '/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR/19/T1DUAL/DICOM_anon/InPhase'
+        # movingimg, moving_nopad = self.preprocess_img(moving_img, pad=self.pad, pad_sz=self.size)
+        # fixedimg, fixed_nopad = self.preprocess_img(fixed_img, pad=self.pad, pad_sz=self.size)
         movingimg, moving_nopad = self.preprocess_img(self.imgpath[i[0]], pad=self.pad, pad_sz=self.size)
         fixedimg, fixed_nopad = self.preprocess_img(self.imgpath[i[1]], pad=self.pad, pad_sz=self.size)
         assert(movingimg.shape==fixedimg.shape)
         if len(self.segpath)!=0:
             moving_seg = self.preprocess_seg(self.segpath[i[0]], pad=self.pad, pad_sz=self.size)
             fixed_seg = self.preprocess_seg(self.segpath[i[1]], pad=self.pad, pad_sz=self.size)
+            # moving_seg = self.preprocess_seg("/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR/19/T1DUAL/Ground", pad=self.pad, pad_sz=self.size)
+            # fixed_seg = self.preprocess_seg("/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR/34/T1DUAL/Ground", pad=self.pad, pad_sz=self.size)
             assert(fixed_seg.shape==moving_seg.shape)
             return fixedimg, fixed_seg, fixed_nopad, movingimg, moving_seg, index 
         return fixedimg, fixed_nopad, movingimg, index
@@ -291,7 +321,17 @@ class ChaosDataset(Dataset):
         """
         for img in Path(data_path).rglob("*" + self.ext):
             data = nibabel.load(img)
-            data = np.array(data.get_fdata())       
+            data = np.array(data.get_fdata())
+            height = pad_sz[0]
+            width = pad_sz[1]
+            # resize
+            # if not ((height == data.shape[0]) and (width == data.shape[1])):
+            #     data_resized = np.zeros((height, width, data.shape[2]))
+            #     for idx in range(data.shape[2]):
+            #         tmp_img = data[:, :, idx]
+            #         tmp_img = cv2.resize(tmp_img, (256, 256))
+            #         data_resized[:, :, idx] = tmp_img
+            #     data = data_resized       
             if pad:
                 s_x = math.floor((pad_sz[0] - data.shape[0])/2)
                 s_y = math.floor((pad_sz[1] - data.shape[1])/2)
