@@ -30,11 +30,12 @@ class TrainModel():
         self.savepath = savepath
         #
     def trainIter(self, fix, moving, fixed_label, moving_label, fixed_nopad=None, seg_f=None):
-        if not os.path.exists('seg_imgs_external_prepeocessing_01'):
-            os.mkdir('seg_imgs_external_prepeocessing_01')
-        seg_fname = "seg_imgs_external_prepeocessing_01/e"+str(self.cur_epoch)+"idx"+str(self.cur_idx)
+        if not os.path.exists('seg_imgs_preprocess_aligned_01_1'):
+            os.mkdir('seg_imgs_preprocess_aligned_01_1')
+        seg_fname = "seg_imgs_preprocess_aligned_01_1/e"+str(self.cur_epoch)+"idx"+str(self.cur_idx)
         if seg_f is not None:
             seg_fname = seg_fname + "_" + seg_f
+
         sim_loss, grad_loss, dice = self.model.forward(fix, moving, fixed_label, moving_label, fix_nopad=fixed_nopad, 
                                                        rtloss=True, eval=True, dice_labels=self.train_dataloader.dataset.dice_labels, 
                                                        seg_fname=seg_fname)
@@ -86,7 +87,7 @@ class TrainModel():
             samples = samples[:-1]
             fixed, fixed_label, moving, moving_label, fixed_nopad = self.data_extract(samples)
             dice = self.model.forward(fixed, moving,  fixed_label, moving_label, fixed_nopad, rtloss=False, eval=True, 
-                                      seg_fname='seg_imgs_external_prepeocessing_01/vale'+str(epoch)+'idx'+str(idx), dice_labels=self.train_dataloader.dataset.dice_labels)
+                                      seg_fname='seg_imgs_preprocess_aligned_01_1/vale'+str(epoch)+'idx'+str(idx), dice_labels=self.train_dataloader.dataset.dice_labels)
             dice = dice.mean()
             tst_dice.update(dice.item())
             idx+=1
@@ -107,8 +108,10 @@ class TrainModel():
             self.global_idx += 1
             self.cur_idx = idx
             # seg_fname = self.train_dataloader.dataset.filenames[self.train_dataloader.dataset.pairs[p][1]].split('.')[-3]
-            seg_fname = "m"+ str(self.train_dataloader.dataset.imgpath[self.train_dataloader.dataset.pairs[p][0]].split('/')[-4]) + \
-                        "f" + str(self.train_dataloader.dataset.imgpath[self.train_dataloader.dataset.pairs[p][1]].split('/')[-4])
+            # seg_fname = "m"+ str(self.train_dataloader.dataset.imgpath[self.train_dataloader.dataset.pairs[p][0]].split('/')[-4]) + \
+                        # "f" + str(self.train_dataloader.dataset.imgpath[self.train_dataloader.dataset.pairs[p][1]].split('/')[-4])
+            seg_fname = "m"+ str(self.train_dataloader.dataset.imgpath[p].split('/')[-4]) + \
+                        "f" + str("/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/MR/2/T1DUAL/DICOM_anon/InPhase".split('/')[-4])
             # seg_fname = self.train_dataloader.dataset.imgpath[p].split('/')[-4]
             logging.info(f'iteration={idx}/{len(self.train_dataloader)}')
             trloss, trdice = self.trainIter(fixed, moving, fixed_label, moving_label, fixed_nopad=fixed_nopad, seg_f=seg_fname)

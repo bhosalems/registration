@@ -25,7 +25,7 @@ MSD_PATH = '/data_local/mbhosale/MSD'
 IXI_PATH = r'/home/csgrad/mbhosale/Image_registration/TransMorph_Transformer_for_Medical_Image_Registration/IXI/IXI_data/'
 BraTS_PATH = r'/home/csgrad/mbhosale/Image_registration/datasets/BraTS2018'
 BraTS_save_PATH = r'/home/csgrad/mbhosale/Image_registration/datasets/BraTS2018/'
-CHAOS_PATH = r'/data_local/mbhosale/CHAOS/'
+CHAOS_PATH = r'/home/csgrad/mbhosale/Datasets/CHAOS_original/'
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -61,7 +61,7 @@ if __name__ == "__main__":
     
     handlers = [logging.StreamHandler()]
     if args.debug:
-        logfile = f'debug_092622_external_preprocessing_-11'
+        logfile = f'debug_100922_preprocess_aligned_01_1'
     else:
         logfile = f'{args.logfile}-{datetime.now().strftime("%m%d%H%M")}'
     handlers.append(logging.FileHandler(
@@ -105,8 +105,7 @@ if __name__ == "__main__":
         # we are not using any other loss function such as cross entropy loss which takes in number of classes as an arguemnt.
         NUM_CLASS = 4
     elif args.dataset == 'CHAOS':
-        # Mahesh : The x-y size of the images is caculated based on maximum z-y size of the dicom images.
-        pad_size = [256, 256, 50]
+        pad_size = [256, 256, 50] # for T1DUAL [256, 256, 50] # TODO Why is it 320 for T2spir ? 
         tr_path = CHAOS_PATH + r"CHAOS_Train_Sets/Train_Sets/MR"
         tst_path = CHAOS_PATH + r"CHAOS_Train_Sets/Train_Sets/MR" # we are choosing train dataset as test because we dont have ground truth in the test
         # TODO But we can change the test modality, but for now we have kept it same 
@@ -117,10 +116,8 @@ if __name__ == "__main__":
         if pad_size[-1]%downsample_rate != 0:
             orig_size = pad_size
             c_dim = orig_size[-1]
-            pad_size[-1] += abs(c_dim - (math.ceil(c_dim/downsample_rate)*downsample_rate))      
-        window_r = 9
-        # Mahesh : Should the mumber of classes be one more than total number of classes? As required for some of the loss functions etc. >> No Need, 
-        # we are not using any other loss function such as cross entropy loss which takes in number of classes as an arguemnt.
+            pad_size[-1] += abs(c_dim - (math.ceil(c_dim/downsample_rate)*downsample_rate))
+        window_r = 7
         NUM_CLASS = 5
 
     ##BUILD MODEL##

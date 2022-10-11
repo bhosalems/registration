@@ -190,6 +190,21 @@ class RegNet(nn.Module):
         # torch.save(warplabel, 'warplabel2.pt')
         warpseg = torch.nn.functional.one_hot(warplabel.long(), num_classes=self.n_class).float().permute(0, 4, 1, 2, 3)
         dice = dice_onehot(warpseg[:, 1:, :, :, :].detach(), fixed_label[:, 1:, :, :, :].detach())#disregard background
+        # Code to debug why sometimes dice is all zero, it appears that the flow is quite bad.
+        # if dice == 0:
+        #     fnames = []
+        #     save_nii = True
+        #     grid_flow = None
+        #     grid = mk_grid_img((400, 400, 64, 1, 3), 16, 1) # Mahesh : Somehow flow.shape doesnt work because 
+        #     # max and min we get in flow_asrgb() both get value of 1. To overcome, passing hardcoded temporarily,
+        #     # the axis along which max() and min() is taken will fix the issue.
+        #     grid = np.moveaxis(grid, [3, 4], [-5, -4])
+        #     grid = torch.tensor(grid, device=flow.device, dtype=flow.dtype)
+        #     grid_flow = self.spatial_transformer_network(grid, flow)
+        #     grid_flow = grid_flow.squeeze(0)
+        #     if grid_flow is not None:
+        #         fnames.append(seg_fname+"grid_flow.png")
+        #     flow_as_rgb(grid_flow.detach().cpu().numpy(), 8, fname=fnames[-1])
         if save_nii:
             fnames = []
             fnames.append(seg_fname+"true_seg")
@@ -223,7 +238,7 @@ class RegNet(nn.Module):
             DSCs[idx] = dsc
             idx += 1
         mean_DSC = np.mean(DSCs)
-        seg_fname = None # Temporary
+        seg_fname = None # If you need to visualize the grad and images by slices.. but bw gradgflow visualization is better.
         if seg_fname is not None:
             self.seg_imgs(y_pred, y_true, seg_fname+"iou"+str(mean_DSC*100)+".png")
         return mean_DSC
@@ -285,14 +300,14 @@ class RegNet(nn.Module):
                 sim_mask = sim_mask*mask
             sloss = sim_loss
             
-            # Mahesh : If similarity loss is greater than 50%, we will convert tensors to nifti fro visualization.
-            if sloss*-1 >= 0.80:
+            # Mahesh : If similarity loss is greater than 65%, we will convert tensors to nifti fro visualization.
+            if sloss*-1 >= 0.65:
                 fnames = []
                 fnames.append(seg_fname+"true.nii.gz")
                 fnames.append(seg_fname+"warp.nii.gz")
                 fnames.append(seg_fname+"flow.nii.gz")
                 grid_flow = None
-                grid = mk_grid_img((400, 400, 64, 1, 3), 16, 1) # Mahesh : Somehow flow.shape doesnt work because 
+                grid = mk_grid_img((400, 400, 64, 1, 3), 16, 1) # Mahesh : #TODO Somehow flow.shape doesnt work because 
                 # max and min we get in flow_asrgb() both get value of 1. To overcome, passing hardcoded temporarily,
                 # the axis along which max() and min() is taken will fix the issue.
                 grid = np.moveaxis(grid, [3, 4], [-5, -4])
