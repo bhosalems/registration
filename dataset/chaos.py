@@ -240,42 +240,34 @@ class ChaosDataset(Dataset):
             data = nibabel.load(img)
             data = np.array(data.get_fdata())
         
-        # resize
-        # height = pad_sz[0]
-        # width = pad_sz[1]
-        # data_resized = np.zeros((height, width, data.shape[2]))
-        # for idx in range(data.shape[2]):
-        #     tmp_img = data[:, :, idx]
-        #     tmp_img = cv2.resize(tmp_img, (256, 256), interpolation=cv2.INTER_CUBIC)
-        #     data_resized[:, :, idx] = tmp_img
-        # data = data_resized
-        
         # normalize
-        # mean = np.mean(data)
-        # std = np.std(data, ddof=1)
-        # maxp = mean + 6*std
-        # minp = mean - 6*std
+        mean = np.mean(data)
+        std = np.std(data, ddof=1)
+        maxp = mean + 6*std
+        minp = mean - 6*std
         # num_mins = (data < minp).sum()
         # num_maxs = (data > maxp).sum() 
         # print("data min\n" + str(data.min()))
         # print("data max\n" + str(data.max()))
-        # y = np.clip(data, minp, maxp)
-        # z = (y-y.min())/y.max()
-        # data = z
-        # print("clipped percentage {}".format(((num_mins + num_maxs) * 100)/(data.shape[0]*data.shape[1]*data.shape[2])))
-        mean = np.mean(data)
-        std = np.std(data, ddof=1)
-        z = (data-mean)/std
-        z = np.clip(z, -1.0, 1.0)
+        y = np.clip(data, minp, maxp)
+        z = (y-y.min())/y.max()
         data = z
+        # mean = np.mean(data)
+        # std = np.std(data)
+        # z = (data-mean)/std
+        # num_mins = (data < -1.0).sum()
+        # num_maxs = (data > 1.0).sum() 
+        # z = np.clip(z, -1.0, 1.0)
+        data = z
+        # print("clipped percentage {}".format(((num_mins + num_maxs) * 100)/(data.shape[0]*data.shape[1]*data.shape[2])))
         
         if pad:
-            # Mahesh : Q. Why was it called fixed_nopad before? Am I missing mosmething, it appears it should be same for both the 
-            # fixed and the moving image.
             s_x = math.floor((pad_sz[0] - data.shape[0])/2)
             s_y = math.floor((pad_sz[1] - data.shape[1])/2)
             s_z = math.floor((pad_sz[2] - data.shape[2])/2)
             new_x = np.zeros(pad_sz)
+            # if s_x < 0 or s_y < 0 or s_z < 0:
+            #     print("caught")
             new_x[s_x:s_x+data.shape[0], s_y:s_y + data.shape[1], s_z:s_z + data.shape[2]] = data
             #save_index = [s_x, x.shape[0], s_y, x.shape[1], s_z, x.shape[2]]
             nopad = np.zeros_like(new_x)
@@ -285,23 +277,22 @@ class ChaosDataset(Dataset):
             data = self.zero_pad(data)
             nopad = self.zero_pad(nopad)
             assert(data.shape == nopad.shape)
-            # Mahesh : Q. Does this really update the self.size?
             self.size = data.shape
         return data, nopad
     
     def __getitem__(self, index):
-        i = self.pairs[index] # TODO revert back by uncommentung this line.
+        # i = self.pairs[index] # TODO revert back by uncommentung this line.
         # i = self.pairs[0] # Just for debugging using same pair of fixed and moving images over and over epochs.
         # fixed_img = '/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR/34/T1DUAL/DICOM_anon/InPhase/'
         # moving_img = '/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR/19/T1DUAL/DICOM_anon/InPhase'
         # movingimg, moving_nopad = self.preprocess_img(moving_img, pad=self.pad, pad_sz=self.size)
         # fixedimg, fixed_nopad = self.preprocess_img(fixed_img, pad=self.pad, pad_sz=self.size)
-        movingimg, moving_nopad = self.preprocess_img(self.imgpath[i[0]], pad=self.pad, pad_sz=self.size)
-        fixedimg, fixed_nopad = self.preprocess_img(self.imgpath[i[1]], pad=self.pad, pad_sz=self.size)
+        movingimg, moving_nopad = self.preprocess_img(self.imgpath[index], pad=self.pad, pad_sz=self.size)
+        fixedimg, fixed_nopad = self.preprocess_img('/home/csgrad/mbhosale/Datasets/CHAOS_original/CHAOS_Train_Sets/Train_Sets/MR/2/T1DUAL/DICOM_anon/InPhase', pad=self.pad, pad_sz=self.size)
         assert(movingimg.shape==fixedimg.shape)
         if len(self.segpath)!=0:
-            moving_seg = self.preprocess_seg(self.segpath[i[0]], pad=self.pad, pad_sz=self.size)
-            fixed_seg = self.preprocess_seg(self.segpath[i[1]], pad=self.pad, pad_sz=self.size)
+            moving_seg = self.preprocess_seg(self.segpath[index], pad=self.pad, pad_sz=self.size)
+            fixed_seg = self.preprocess_seg('/home/csgrad/mbhosale/Datasets/CHAOS_original/CHAOS_Train_Sets/Train_Sets/MR/2/T1DUAL/Ground', pad=self.pad, pad_sz=self.size)
             # moving_seg = self.preprocess_seg("/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR/19/T1DUAL/Ground", pad=self.pad, pad_sz=self.size)
             # fixed_seg = self.preprocess_seg("/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR/34/T1DUAL/Ground", pad=self.pad, pad_sz=self.size)
             assert(fixed_seg.shape==moving_seg.shape)
@@ -309,7 +300,8 @@ class ChaosDataset(Dataset):
         return fixedimg, fixed_nopad, movingimg, index
     
     def __len__(self):
-        return self.num_samples
+        return len(self.imgpath)
+        # return self.num_samples
     
     def preprocess_seg(self, data_path, pad, pad_sz):
         """Preprocess the .png segment labels, we need to pad to the given size when required
@@ -324,14 +316,6 @@ class ChaosDataset(Dataset):
             data = np.array(data.get_fdata())
             height = pad_sz[0]
             width = pad_sz[1]
-            # resize
-            # if not ((height == data.shape[0]) and (width == data.shape[1])):
-            #     data_resized = np.zeros((height, width, data.shape[2]))
-            #     for idx in range(data.shape[2]):
-            #         tmp_img = data[:, :, idx]
-            #         tmp_img = cv2.resize(tmp_img, (256, 256))
-            #         data_resized[:, :, idx] = tmp_img
-            #     data = data_resized       
             if pad:
                 s_x = math.floor((pad_sz[0] - data.shape[0])/2)
                 s_y = math.floor((pad_sz[1] - data.shape[1])/2)
@@ -375,7 +359,7 @@ def Chaos_dataloader(root_path, bsize, tr_path, tst_path, tr_modality, tr_phase,
     return train_dataloader, test_dataloader
 
 if __name__ == "__main__":
-    data_path = r"/data_local/mbhosale/CHAOS/"
+    data_path = r"/home/csgrad/mbhosale/Datasets/CHAOS/"
     # dicom2nifty(r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR")
     # dicom2nifty(r"/data_local/mbhosale/CHAOS/CHAOS_Test_Sets/Test_Sets/MR")
     # dicom2nifty(r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[])
@@ -385,15 +369,15 @@ if __name__ == "__main__":
     # prepare_seg(r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[])
     # NOTE There's no ground truth in the test images.
     
-    c1 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
+    c1 = Chaos_processor(dicom_path=r"/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
                         num_workers=5, fid=0)
-    c2 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
+    c2 = Chaos_processor(dicom_path=r"/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
                         num_workers=5, fid=1)
-    c3 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
+    c3 = Chaos_processor(dicom_path=r"/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
                         num_workers=5, fid=2)
-    c4 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
+    c4 = Chaos_processor(dicom_path=r"/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
                         num_workers=5, fid=3)
-    c5 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
+    c5 = Chaos_processor(dicom_path=r"/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
                         num_workers=5, fid=4)
     c1.start()
     c2.start()
@@ -406,15 +390,15 @@ if __name__ == "__main__":
     c4.join()
     c5.join()
     
-    c1 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
+    c1 = Chaos_processor(dicom_path=r"/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
                         num_workers=5, fid=0)
-    c2 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
+    c2 = Chaos_processor(dicom_path=r"/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
                         num_workers=5, fid=1)
-    c3 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
+    c3 = Chaos_processor(dicom_path=r"/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
                         num_workers=5, fid=2)
-    c4 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
+    c4 = Chaos_processor(dicom_path=r"/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
                         num_workers=5, fid=3)
-    c5 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
+    c5 = Chaos_processor(dicom_path=r"/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
                         num_workers=5, fid=4)
     c1.start()
     c2.start()
