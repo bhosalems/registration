@@ -30,17 +30,17 @@ class TrainModel():
         self.savepath = savepath
         #
     def trainIter(self, fix, moving, fixed_label, moving_label, fixed_nopad=None, seg_f=None):
-        if not os.path.exists('seg_imgs_preprocess_aligned_01_1'):
-            os.mkdir('seg_imgs_preprocess_aligned_01_1')
-        seg_fname = "seg_imgs_preprocess_aligned_01_1/e"+str(self.cur_epoch)+"idx"+str(self.cur_idx)
+        if not os.path.exists('seg_imgs_102422_transaffine_aligned'):
+            os.mkdir('seg_imgs_102422_transaffine_aligned')
+        seg_fname = "seg_imgs_102422_transaffine_aligned/e"+str(self.cur_epoch)+"idx"+str(self.cur_idx)
         if seg_f is not None:
             seg_fname = seg_fname + "_" + seg_f
 
-        sim_loss, grad_loss, dice = self.model.forward(fix, moving, fixed_label, moving_label, fix_nopad=fixed_nopad, 
+        sim_loss, grad_loss, affine_sim_loss, dice = self.model.forward(fix, moving, fixed_label, moving_label, fix_nopad=fixed_nopad, 
                                                        rtloss=True, eval=True, dice_labels=self.train_dataloader.dataset.dice_labels, 
                                                        seg_fname=seg_fname)
-        sim_loss, grad_loss, dice = sim_loss.mean(), grad_loss.mean(), dice.mean()
-        loss = float(self.args.weight[0])*sim_loss + float(self.args.weight[1])*grad_loss
+        sim_loss, grad_loss, affine_sim_loss, dice = sim_loss.mean(), grad_loss.mean(), affine_sim_loss.mean(), dice.mean()
+        loss = float(self.args.weight[0])*sim_loss + float(self.args.weight[1])*grad_loss + affine_sim_loss
         if self.global_idx%self.printfreq ==0:
             logging.info(f'simloss={sim_loss}, segfname={seg_f}, gradloss={grad_loss}, loss={loss}, dice={(dice*100):2f}')
         if self.tb is not None:
@@ -87,7 +87,7 @@ class TrainModel():
             samples = samples[:-1]
             fixed, fixed_label, moving, moving_label, fixed_nopad = self.data_extract(samples)
             dice = self.model.forward(fixed, moving,  fixed_label, moving_label, fixed_nopad, rtloss=False, eval=True, 
-                                      seg_fname='seg_imgs_preprocess_aligned_01_1/vale'+str(epoch)+'idx'+str(idx), dice_labels=self.train_dataloader.dataset.dice_labels)
+                                      seg_fname='seg_imgs_102422_transaffine_aligned/vale'+str(epoch)+'idx'+str(idx), dice_labels=self.train_dataloader.dataset.dice_labels)
             dice = dice.mean()
             tst_dice.update(dice.item())
             idx+=1

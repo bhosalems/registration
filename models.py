@@ -13,6 +13,9 @@ import imageio
 import SimpleITK as sitk
 import nibabel as nib
 from utils import *
+from TransMorph_affine import TransMorph_affine
+# from TransMorph_affine import config_affine. as CONFIGS
+
 
 class SpatialTransformer(nn.Module):
     def __init__(self, size, mode='bilinear'):
@@ -170,6 +173,11 @@ class RegNet(nn.Module):
 
         self.winsize = winsize
         self.n_class = n_class
+        
+        self.affine_config = config = TransMorph_affine.CONFIGS['TransMorph-Affine']
+        self.afiine_infer  = TransMorph_affine.ApplyAffine()
+        self.affine_model = TransMorph_affine.SwinAffine(config)
+        
         #feat
         # self.feat_conv= conv_fn(dec_nf[-1]+num_classes, num_classes, kernel_size = 3, stride = 1, padding = 1)
         # self.softmax = nn.Softmax(dim=1)
@@ -275,11 +283,23 @@ class RegNet(nn.Module):
     # use the labels for calculating the DICE scores.
     def forward(self, fix, moving, fix_label, moving_label, fix_nopad=None, rtloss=True, eval=True, dice_labels=[0, 1, 2, 3, 4], 
                 seg_fname = None):
+        
+        # moving = moving.unsqueeze(-5)
+        # fix = fix.unsqueeze(-5)
+        
+        # Do affine alignment first
         x = torch.cat([moving, fix], dim = 1)
+        ct_aff, mat, inv_mats = self.affine_model(x)
+        phan = fix
+        affine_sim_loss, affine_sim_mask = ncc_loss(ct_aff, phan, reduce_mean=False, winsize=self.winsize)
+        if affine_sim_mask.any():
+            affine_sim_loss = affine_sim_loss[affine_sim_mask].mean()
+        else:
+            affine_sim_loss = torch.Tensor(np.array([0]))[0]
+        
+        x = torch.cat([ct_aff, fix], dim = 1)
         unet_out = self.unet(x)
         save_nii = False
-        # Mahesh : Q. Output of the displacement flow here is [1, Number of channels, height, width, depth], 
-        # but our labels as well as moving has a single channel, should this be an issue? Check the transmorph code here.
         flow = self.conv(unet_out)
          
         if rtloss:
@@ -300,14 +320,15 @@ class RegNet(nn.Module):
                 sim_mask = sim_mask*mask
             sloss = sim_loss
             
-            # Mahesh : If similarity loss is greater than 65%, we will convert tensors to nifti fro visualization.
+            # Mahesh : If similarity loss is greater than 65%, we will convert tensors to nifti for visualization.
             if sloss*-1 >= 0.65:
                 fnames = []
                 fnames.append(seg_fname+"true.nii.gz")
                 fnames.append(seg_fname+"warp.nii.gz")
                 fnames.append(seg_fname+"flow.nii.gz")
                 grid_flow = None
-                grid = mk_grid_img((400, 400, 64, 1, 3), 16, 1) # Mahesh : #TODO Somehow flow.shape doesnt work because 
+                # grid = mk_grid_img((400, 400, 64, 1, 3), 16, 1) 
+                grid = mk_grid_img((256, 256, 64, 1, 3), 16, 1) # Mahesh : #TODO Somehow flow.shape doesnt work because 
                 # max and min we get in flow_asrgb() both get value of 1. To overcome, passing hardcoded temporarily,
                 # the axis along which max() and min() is taken will fix the issue.
                 grid = np.moveaxis(grid, [3, 4], [-5, -4])
@@ -325,9 +346,9 @@ class RegNet(nn.Module):
                 # warped_seg = torch.max(warped_seg.detach(),dim=1)[1]
                 # dice  = self.dice_val_VOI(warped_seg, fix_label, dice_labels, fix_nopad, seg_fname)
                 # logging.info(f'eval_dice : {e_dice} dice : {dice}')
-                return sloss, grad_loss, dice
+                return sloss, grad_loss, affine_sim_loss, dice
             else:
-                return sloss, grad_loss
+                return sloss, grad_loss, affine_sim_loss
         else:
             if eval:
                 dice = self.eval_dice(fix_label, moving_label, flow, fix_nopad, seg_fname=seg_fname, save_nii=save_nii)

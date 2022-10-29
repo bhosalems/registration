@@ -21,11 +21,12 @@ from models import RegNet
 import math
 
 CANDI_PATH = '/data_local/mbhosale/CANDI_split'
-MSD_PATH = '/data_local/mbhosale/MSD'
+# MSD_PATH = '/data_local/mbhosale/MSD'
+MSD_PATH = r'/home/csgrad/mbhosale/Datasets/MSD_liver/'
 IXI_PATH = r'/home/csgrad/mbhosale/Image_registration/TransMorph_Transformer_for_Medical_Image_Registration/IXI/IXI_data/'
 BraTS_PATH = r'/home/csgrad/mbhosale/Image_registration/datasets/BraTS2018'
 BraTS_save_PATH = r'/home/csgrad/mbhosale/Image_registration/datasets/BraTS2018/'
-CHAOS_PATH = r'/home/csgrad/mbhosale/Datasets/CHAOS_original/'
+CHAOS_PATH = r'/home/csgrad/mbhosale/Datasets/CHAOS/'
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -42,15 +43,17 @@ def get_args():
     # parser.add_argument('--testfrequency', type=int, default=1, help='testfrequency')
     parser.add_argument('--gpu', default='0, 1', type=str, help='GPU device ID (default: -1)')
     parser.add_argument('--logfile', default='', type=str)
-    parser.add_argument('--weight', type=str, default='1,0.01', help='LAMBDA, GAMMA')
+    parser.add_argument('--weight', type=str, default='1, 2', help='LAMBDA, GAMMA')
     # parser.add_argument('--uncert', type=int, default=0)
     # parser.add_argument('--dual', action='store_true')
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--droprate', type=float, default=0)
     parser.add_argument('--sgd', action='store_true')
     # parser.add_argument('--feat', action='store_true')
-    parser.add_argument('--modality', type=str, default='flair', help='Modality of the scan ' 
-    'to be used, used only in case of BraTS dataset for now')
+    parser.add_argument('--tr_modality', type=str, default='T1DUAL', help='train modality')
+    parser.add_argument('--tst_modality', type=str, default='T1DUAL', help='test modality')
+    parser.add_argument('--tr_phase', type=str, default='InPhase', help='train phase')
+    parser.add_argument('--tst_phase', type=str, default='InPhase', help='test phase')
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -61,7 +64,7 @@ if __name__ == "__main__":
     
     handlers = [logging.StreamHandler()]
     if args.debug:
-        logfile = f'debug_100922_preprocess_aligned_01_1'
+        logfile = f'debug_102422_transaffine_aligned'
     else:
         logfile = f'{args.logfile}-{datetime.now().strftime("%m%d%H%M")}'
     handlers.append(logging.FileHandler(
@@ -85,11 +88,16 @@ if __name__ == "__main__":
         window_r = 7
         NUM_CLASS = 29
         train_dataloader, test_dataloader = candi.CANDI_dataloader(args, datapath=CANDI_PATH, size=pad_size)
-    elif args.dataset == 'prostate' or args.dataset == 'hippocampus':
+    elif args.dataset == 'prostate' or args.dataset == 'hippocampus' or args.dataset == "liver":
         train_dataloader, test_dataloader, _ = msd.MSD_dataloader(args.dataset, args.bsize, args.num_workers, datapath=MSD_PATH)
-        NUM_CLASS = 3
+        NUM_CLASS = 2 if args.dataset == 'liver' else 3
         window_r = 5 if args.dataset == 'hippocampus' else 9
-        pad_size = [48, 64, 48] if args.dataset=='hippocampus' else [240, 240, 96]
+        if args.dataset == 'hippocampus':
+            pad_size = [48, 64, 48]
+        elif args.dataset == 'prostate': 
+            pad_size = [240, 240, 96]
+        else:
+            pad_size = [512, 512, 1000]
     elif args.dataset == 'IXI':
         train_dataloader, test_dataloader = ixi.IXI_dataloader(datapath=IXI_PATH, batch_size=args.bsize, num_workers=4)
         pad_size = [160, 192, 224]
@@ -110,8 +118,8 @@ if __name__ == "__main__":
         tst_path = CHAOS_PATH + r"CHAOS_Train_Sets/Train_Sets/MR" # we are choosing train dataset as test because we dont have ground truth in the test
         # TODO But we can change the test modality, but for now we have kept it same 
         train_dataloader, test_dataloader = chaos.Chaos_dataloader(root_path=CHAOS_PATH,  tr_path=tr_path, tst_path=tst_path, 
-                                                         bsize=1, tr_modality='T1DUAL', tr_phase='InPhase', tst_modality='T1DUAL', 
-                                                         tst_phase='InPhase', size=pad_size, data_split=False, n_fix=1, tr_num_samples=0, 
+                                                         bsize=1, tr_modality=args.tr_modality, tr_phase=args.tr_phase, tst_modality=args.tst_modality, 
+                                                         tst_phase=args.tst_phase, size=pad_size, data_split=False, n_fix=1, tr_num_samples=0, 
                                                          tst_num_samples=10)
         if pad_size[-1]%downsample_rate != 0:
             orig_size = pad_size

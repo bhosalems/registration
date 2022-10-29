@@ -3,8 +3,8 @@
 # This is the first step for image pre-processing
 
 # Feed path to the downloaded data here
-DATAPATH="/home/csgrad/mbhosale/Datasets/CHAOS_original/CHAOS_Train_Sets/Train_Sets/MR" # please put chaos dataset training fold here which contains ground truth
-OUTPATH="/home/csgrad/mbhosale/Datasets/CHAOS_original/CHAOS_Train_Sets/Train_Sets/MR" 
+DATAPATH="/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/MR" # please put chaos dataset training fold here which contains ground truth
+OUTPATH="/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/MR" 
 for sid in $(ls "$DATAPATH")
 do
 	dcm2nii "$DATAPATH/$sid/T2SPIR/DICOM_anon";

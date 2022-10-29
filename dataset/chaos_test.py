@@ -13,7 +13,6 @@ import nibabel
 import itertools
 import imageio
 import multiprocessing
-import cv2
 
 # Chaos is in the DICOM file format but we need to conver it into the nifty file format which we understand
 class Chaos_processor(multiprocessing.Process):
@@ -33,6 +32,12 @@ class Chaos_processor(multiprocessing.Process):
         self.prepare_seg(self.modalities)
 
     def dicom2nifty(self, modalities =['T1DUAL', 'T2SPIR']):
+        # if os.sep=='\\':
+        #     dicom_path = dicom_path.replace('/','\\')
+        # elif os.sep == '/':
+        #     dicom_path = dicom_path.replace('\\','/')
+        # else:
+        #     raise ValueError('os.sep must be \\ or /!')
         modalities = modalities
         for dir in self.dirs:
             b_base_record = self.dicom_path + "/" + dir
@@ -56,10 +61,7 @@ class Chaos_processor(multiprocessing.Process):
                         # i.e. with the depth as last dimension.
                         series_reader.SetFileNames(series_file_names)
                         image3D = series_reader.Execute()
-                        if modality==self.modalities[0]:
-                            output_file = "IMG-"+series_file_names[0].split("/")[-5]
-                        else:
-                            output_file = "IMG-"+series_file_names[0].split("/")[-4]
+                        output_file = "IMG-"+series_file_names[0].split("/")[-1].split("-")[1]
                         output_file = record + "/" + output_file + ".nii.gz"
                         sitk.WriteImage(image3D, output_file)
             else:
@@ -113,7 +115,7 @@ class Chaos_processor(multiprocessing.Process):
                     # seg = nibabel.load(output_file)
                     # arr = seg.get_fdata()
                     seg = sitk.GetImageFromArray(np.moveaxis(data, [0, 1, 2], [-1, -2, -3]))
-                    output_file = "IMG-" + img.absolute().as_posix().split("/")[-4]
+                    output_file = "IMG-" + img.absolute().as_posix().split("/")[-1].split("-")[1]
                     output_file = base_record + "/" + output_file + "_seg.nii.gz"
                     sitk.WriteImage(seg, output_file)
             else:
@@ -189,42 +191,24 @@ class ChaosDataset(Dataset):
                 self.segpath.append(path)
         assert(len(self.imgpath)!=0)
         n = len(self.imgpath)
-        pairs = itertools.product(range(n),range(n))
-        self.pairs = list(pairs)
-        random.shuffle(self.pairs)
-        if num_samples != 0:
-            self.num_samples = num_samples
-        else:
-            self.num_samples = len(self.pairs)
+        self.num_samples = n
+        # pairs = itertools.product(range(n),range(n))
+        # self.pairs = list(pairs)
+        # random.shuffle(self.pairs)
+        # if num_samples != 0:
+            # self.num_samples = num_samples
+        # else:
+            # self.num_samples = len(self.pairs)
         
         
-    def zero_pad(self, data):
+    def zero_pad(self, data, value=0):
         orig_size = data.shape
         c_dim = orig_size[-1]
         pad_sz = abs(c_dim - (math.ceil(c_dim/self.downsample_rate)*self.downsample_rate))
-        # data = torch.nn.functional.pad(data, (math.floor(pad_sz/2), math.ceil(pad_sz/2)), value=value)
-        orig_size =  list(orig_size)
-        orig_size[-1] = orig_size[-1] + pad_sz
-        orig_size = tuple(orig_size)
-        pad_sz = math.floor(pad_sz / 2) 
-        new_x = np.zeros(orig_size)
-        new_x[:, :, pad_sz:pad_sz + data.shape[2]] = data
-        assert(new_x.shape[-1]%self.downsample_rate==0)
-        return new_x
+        data = torch.nn.functional.pad(data, (math.floor(pad_sz/2), math.ceil(pad_sz/2)), value=value)
+        assert(data.shape[-1]%self.downsample_rate==0)
+        return data
     
-    def pad(x, shape):
-        # import ipdb; ipdb.set_trace()
-
-        s_x = math.floor((shape[0] - x.shape[0])/2)
-        s_y = math.floor((shape[1] - x.shape[1])/2)
-        s_z = math.floor((shape[2] - x.shape[2])/2)
-        new_x = np.zeros(shape)
-        new_x[s_x:s_x+x.shape[0],s_y:s_y+x.shape[1], s_z:s_z+x.shape[2]] = x
-        #save_index = [s_x, x.shape[0], s_y, x.shape[1], s_z, x.shape[2]]
-        nopad = np.zeros_like(new_x)
-        nopad[s_x:s_x+x.shape[0],s_y: s_y + x.shape[1], s_z:s_z + x.shape[2]] = 1
-        return new_x, nopad
-
     def preprocess_img(self, data_path, pad, pad_sz):
         """Preprocess the nii.gz images, we need to pad to the given size when required
 
@@ -236,76 +220,60 @@ class ChaosDataset(Dataset):
         # Since, Path().rglob returns the generator and converting the generator to the list is not stable, just iterating anyway,
         # it just returns the signle image.
         data = None
-        for img in Path(data_path).rglob("*" + self.ext): # currrently this loop runs only once
+        for img in Path(data_path).rglob("*" + self.ext):
             data = nibabel.load(img)
             data = np.array(data.get_fdata())
-        print(img, data.shape)
+            if pad:
+                pad_w = -data.shape[0] + pad_sz[0]
+                pad_h = -data.shape[1] + pad_sz[1]
+                pad_d = -data.shape[2] + pad_sz[2]
+                assert((pad_w >= 0 and pad_h >= 0 and pad_d >=0))
+                
+                # Mahesh : Q. Why was it called fixed_nopad before? Am I missing mosmething, it appears it should be same for both the 
+                # fixed and the moving image.
+                nopad = np.ones(data.shape)
+                data = np.pad(data, ((math.floor(pad_w/2), math.ceil(pad_w/2)), (math.floor(pad_h/2), math.ceil(pad_h/2)), 
+                              (math.floor(pad_d/2), math.ceil(pad_d/2))), 'constant')
+                nopad = np.pad(nopad, ((math.floor(pad_w/2), math.ceil(pad_w/2)), (math.floor(pad_h/2), math.ceil(pad_h/2)), 
+                              (math.floor(pad_d/2), math.ceil(pad_d/2))), 'constant')
         
-        # normalize
+       
+        # Mahesh : Q. Should we normalize the images ? What other processing is needed here?
+        #normalize
         mean = np.mean(data)
         std = np.std(data, ddof=1)
         maxp = mean + 6*std
         minp = mean - 6*std
-        # num_mins = (data < minp).sum()
-        # num_maxs = (data > maxp).sum() 
-        # print("data min\n" + str(data.min()))
-        # print("data max\n" + str(data.max()))
         y = np.clip(data, minp, maxp)
         z = (y-y.min())/y.max()
         data = z
-        # mean = np.mean(data)
-        # std = np.std(data)
-        # z = (data-mean)/std
-        # num_mins = (data < -1.0).sum()
-        # num_maxs = (data > 1.0).sum() 
-        # z = np.clip(z, -1.0, 1.0)
-        # data = z
-        # print("clipped percentage {}".format(((num_mins + num_maxs) * 100)/(data.shape[0]*data.shape[1]*data.shape[2])))
-        
-        if pad:
-            s_x = math.floor((pad_sz[0] - data.shape[0])/2)
-            s_y = math.floor((pad_sz[1] - data.shape[1])/2)
-            s_z = math.floor((pad_sz[2] - data.shape[2])/2)
-            new_x = np.zeros(pad_sz)
-            # if s_x < 0 or s_y < 0 or s_z < 0:
-            #     print("caught")
-            new_x[s_x:s_x+data.shape[0], s_y:s_y + data.shape[1], s_z:s_z + data.shape[2]] = data
-            #save_index = [s_x, x.shape[0], s_y, x.shape[1], s_z, x.shape[2]]
-            nopad = np.zeros_like(new_x)
-            nopad[s_x:s_x+data.shape[0], s_y: s_y + data.shape[1], s_z:s_z + data.shape[2]] = 1
-            data = new_x
+        data = np.ascontiguousarray(data)
+        data = torch.from_numpy(data)
+        nopad = np.ascontiguousarray(nopad)
+        nopad = torch.from_numpy(nopad)
         if data.shape[-1]%self.downsample_rate != 0:
             data = self.zero_pad(data)
             nopad = self.zero_pad(nopad)
             assert(data.shape == nopad.shape)
+            # seg = self.zero_pad(seg)
+            # Mahesh : Q. Does this really update the self.size?
             self.size = data.shape
         return data, nopad
     
     def __getitem__(self, index):
-        # i = self.pairs[index] # TODO revert back by uncommentung this line.
-        # i = self.pairs[0] # Just for debugging using same pair of fixed and moving images over and over epochs.
-        # fixed_img = '/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR/34/T1DUAL/DICOM_anon/InPhase/'
-        # moving_img = '/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR/19/T1DUAL/DICOM_anon/InPhase'
-        # movingimg, moving_nopad = self.preprocess_img(moving_img, pad=self.pad, pad_sz=self.size)
-        # fixedimg, fixed_nopad = self.preprocess_img(fixed_img, pad=self.pad, pad_sz=self.size)
-        # print("-------")
-        # print(self.imgpath[index])
-        # print("/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/MR/2/T1DUAL/DICOM_anon/InPhase/IMG-2.nii.gz")
+        # i = self.pairs[index]
         movingimg, moving_nopad = self.preprocess_img(self.imgpath[index], pad=self.pad, pad_sz=self.size)
-        fixedimg, fixed_nopad = self.preprocess_img('/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/MR/2/T1DUAL/DICOM_anon/InPhase', pad=self.pad, pad_sz=self.size)
+        fixedimg, fixed_nopad = self.preprocess_img(self.imgpath[index], pad=self.pad, pad_sz=self.size)
         assert(movingimg.shape==fixedimg.shape)
         if len(self.segpath)!=0:
-            moving_seg = self.preprocess_seg(self.segpath[index], pad=self.pad, pad_sz=self.size)
-            fixed_seg = self.preprocess_seg('/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/MR/2/T1DUAL/Ground', pad=self.pad, pad_sz=self.size)
-            # moving_seg = self.preprocess_seg("/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR/19/T1DUAL/Ground", pad=self.pad, pad_sz=self.size)
-            # fixed_seg = self.preprocess_seg("/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR/34/T1DUAL/Ground", pad=self.pad, pad_sz=self.size)
+            moving_seg = self.preprocess_seg(self.segpath[i[0]], pad=self.pad, pad_sz=self.size)
+            fixed_seg = self.preprocess_seg(self.segpath[i[1]], pad=self.pad, pad_sz=self.size)
             assert(fixed_seg.shape==moving_seg.shape)
             return fixedimg, fixed_seg, fixed_nopad, movingimg, moving_seg, index 
         return fixedimg, fixed_nopad, movingimg, index
     
     def __len__(self):
-        return len(self.imgpath)
-        # return self.num_samples
+        return self.num_samples
     
     def preprocess_seg(self, data_path, pad, pad_sz):
         """Preprocess the .png segment labels, we need to pad to the given size when required
@@ -317,16 +285,16 @@ class ChaosDataset(Dataset):
         """
         for img in Path(data_path).rglob("*" + self.ext):
             data = nibabel.load(img)
-            data = np.array(data.get_fdata())
-            height = pad_sz[0]
-            width = pad_sz[1]
+            data = np.array(data.get_fdata())       
             if pad:
-                s_x = math.floor((pad_sz[0] - data.shape[0])/2)
-                s_y = math.floor((pad_sz[1] - data.shape[1])/2)
-                s_z = math.floor((pad_sz[2] - data.shape[2])/2)
-                new_x = np.zeros(pad_sz)
-                new_x[s_x:s_x + data.shape[0], s_y:s_y + data.shape[1], s_z:s_z + data.shape[2]] = data
-                data = new_x        
+                pad_w = -data.shape[0] + pad_sz[0]
+                pad_h = -data.shape[1] + pad_sz[1]
+                pad_d = -data.shape[2] + pad_sz[2]
+                assert(pad_w >= 0 and pad_h >= 0 and pad_d >=0)
+                data = np.pad(data, ((math.floor(pad_w/2), math.ceil(pad_w/2)), 
+                                     (math.floor(pad_h/2), math.ceil(pad_h/2)), 
+                                (math.floor(pad_d/2), math.ceil(pad_d/2))), 'constant')
+        data = torch.from_numpy(data)
         return data
 
 def Chaos_dataloader(root_path, bsize, tr_path, tst_path, tr_modality, tr_phase, tst_modality, tst_phase, 
@@ -363,7 +331,7 @@ def Chaos_dataloader(root_path, bsize, tr_path, tst_path, tr_modality, tr_phase,
     return train_dataloader, test_dataloader
 
 if __name__ == "__main__":
-    data_path = r"/home/csgrad/mbhosale/Datasets/CHAOS/"
+    # data_path = r"/data_local/mbhosale/CHAOS/"
     # dicom2nifty(r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR")
     # dicom2nifty(r"/data_local/mbhosale/CHAOS/CHAOS_Test_Sets/Test_Sets/MR")
     # dicom2nifty(r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[])
@@ -373,15 +341,15 @@ if __name__ == "__main__":
     # prepare_seg(r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[])
     # NOTE There's no ground truth in the test images.
     
-    c1 = Chaos_processor(dicom_path=r"/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
+    c1 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
                         num_workers=5, fid=0)
-    c2 = Chaos_processor(dicom_path=r"/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
+    c2 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
                         num_workers=5, fid=1)
-    c3 = Chaos_processor(dicom_path=r"/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
+    c3 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
                         num_workers=5, fid=2)
-    c4 = Chaos_processor(dicom_path=r"/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
+    c4 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
                         num_workers=5, fid=3)
-    c5 = Chaos_processor(dicom_path=r"/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
+    c5 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR", modalities=['T1DUAL', 'T2SPIR'], 
                         num_workers=5, fid=4)
     c1.start()
     c2.start()
@@ -394,15 +362,15 @@ if __name__ == "__main__":
     c4.join()
     c5.join()
     
-    c1 = Chaos_processor(dicom_path=r"/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
+    c1 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
                         num_workers=5, fid=0)
-    c2 = Chaos_processor(dicom_path=r"/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
+    c2 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
                         num_workers=5, fid=1)
-    c3 = Chaos_processor(dicom_path=r"/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
+    c3 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
                         num_workers=5, fid=2)
-    c4 = Chaos_processor(dicom_path=r"/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
+    c4 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
                         num_workers=5, fid=3)
-    c5 = Chaos_processor(dicom_path=r"/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
+    c5 = Chaos_processor(dicom_path=r"/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/CT", modalities=[], 
                         num_workers=5, fid=4)
     c1.start()
     c2.start()

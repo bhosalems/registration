@@ -28,6 +28,9 @@ def NIISplit(img_path, label_path, dataset = 'hippocampus', mode = 'vm', train =
     elif dataset == 'prostate':
         test_index = [16, 4, 32, 20, 43, 18, 6, 1]
         pad_size = (240,240,96)
+    elif dataset == "Liver":
+        test_index = []
+        pad_size = [512, 512, 1000]
     # 
     test_filenames = []
     train_filenames = []
