@@ -20,13 +20,13 @@ from train import TrainModel
 from models import RegNet
 import math
 
-CANDI_PATH = '/data_local/mbhosale/CANDI_split'
-# MSD_PATH = '/data_local/mbhosale/MSD'
-MSD_PATH = r'/home/csgrad/mbhosale/Datasets/MSD_liver/'
+CANDI_PATH = r'/data_local/mbhosale/CANDI_split'
+MSD_PATH = r'/data_local/mbhosale/MSD'
+# MSD_PATH = r'/home/csgrad/mbhosale/Datasets/MSD/'
 IXI_PATH = r'/home/csgrad/mbhosale/Image_registration/TransMorph_Transformer_for_Medical_Image_Registration/IXI/IXI_data/'
 BraTS_PATH = r'/home/csgrad/mbhosale/Image_registration/datasets/BraTS2018'
 BraTS_save_PATH = r'/home/csgrad/mbhosale/Image_registration/datasets/BraTS2018/'
-CHAOS_PATH = r'/home/csgrad/mbhosale/Datasets/CHAOS/'
+CHAOS_PATH = r'/home/csgrad/mbhosale/Datasets/CHAOS_preprocessed/'
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -39,10 +39,10 @@ def get_args():
     parser.add_argument('--epoch', type=int, default = 500, help = "Max Epoch")
     parser.add_argument('--bsize', type=int, default=2, help='Batch size') 
     parser.add_argument('--num_workers', type=int, default=4)
-    # parser.add_argument('--savefrequency', type=int, default=1, help='savefrequency')
+    # parser.add_argument('--savefrequency', type=int, default=25, help='savefrequency')
     # parser.add_argument('--testfrequency', type=int, default=1, help='testfrequency')
     parser.add_argument('--gpu', default='0, 1', type=str, help='GPU device ID (default: -1)')
-    parser.add_argument('--logfile', default='', type=str)
+    parser.add_argument('--log', default='./logs/', type=str)
     parser.add_argument('--weight', type=str, default='1, 2', help='LAMBDA, GAMMA')
     # parser.add_argument('--uncert', type=int, default=0)
     # parser.add_argument('--dual', action='store_true')
@@ -63,12 +63,16 @@ if __name__ == "__main__":
     args.weight = [float(i) for i in args.weight.split(',')]
     
     handlers = [logging.StreamHandler()]
+    if args.log:
+        args.log = os.path.join(args.log, args.dataset, datetime.now().strftime("%m_%d_%y_%H_%M"))
+        if not os.path.isdir(args.log):
+            os.makedirs(args.log)
     if args.debug:
-        logfile = f'debug_102422_transaffine_aligned'
+        logfile = os.path.join(args.log, 'logs_wnidow_5.txt')
     else:
-        logfile = f'{args.logfile}-{datetime.now().strftime("%m%d%H%M")}'
+        logfile = os.path.join(args.logfile, f'{datetime.now().strftime("%m%d%H%M")}.txt')
     handlers.append(logging.FileHandler(
-        f'./logs/{logfile}.txt', mode='a'))
+        logfile, mode='a'))
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s', handlers=handlers,     
@@ -90,14 +94,19 @@ if __name__ == "__main__":
         train_dataloader, test_dataloader = candi.CANDI_dataloader(args, datapath=CANDI_PATH, size=pad_size)
     elif args.dataset == 'prostate' or args.dataset == 'hippocampus' or args.dataset == "liver":
         train_dataloader, test_dataloader, _ = msd.MSD_dataloader(args.dataset, args.bsize, args.num_workers, datapath=MSD_PATH)
-        NUM_CLASS = 2 if args.dataset == 'liver' else 3
-        window_r = 5 if args.dataset == 'hippocampus' else 9
+        NUM_CLASS = 3
+        if args.dataset == 'hippocampus': 
+            window_r = 5
+        elif args.dataset == 'liver':
+            window_r = 15
+        else:
+            window_r = 9
         if args.dataset == 'hippocampus':
             pad_size = [48, 64, 48]
         elif args.dataset == 'prostate': 
             pad_size = [240, 240, 96]
         else:
-            pad_size = [512, 512, 1000]
+            pad_size = [256, 256, 128]
     elif args.dataset == 'IXI':
         train_dataloader, test_dataloader = ixi.IXI_dataloader(datapath=IXI_PATH, batch_size=args.bsize, num_workers=4)
         pad_size = [160, 192, 224]
@@ -125,7 +134,7 @@ if __name__ == "__main__":
             orig_size = pad_size
             c_dim = orig_size[-1]
             pad_size[-1] += abs(c_dim - (math.ceil(c_dim/downsample_rate)*downsample_rate))
-        window_r = 7
+        window_r = 11
         NUM_CLASS = 5
 
     ##BUILD MODEL##

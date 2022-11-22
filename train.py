@@ -6,6 +6,7 @@ from losses import *
 from torch.optim import Adam, SGD
 from torch.optim.lr_scheduler import StepLR
 from uncert.snapshot import CyclicCosAnnealingLR
+from datetime import datetime
 
 
 class TrainModel():
@@ -19,10 +20,10 @@ class TrainModel():
         self.printfreq = 1
         self.cur_epoch = 0
         self.cur_idx = 0
-        
+        self.log = args.log
         #
-        if args.logfile:
-            savepath = f'ckpts/{args.logfile}'
+        if args.log:
+            savepath = os.path.join(args.log, 'ckpts')
         else:
             savepath = f'ckpts/vm'
         if not os.path.isdir(savepath):
@@ -30,17 +31,18 @@ class TrainModel():
         self.savepath = savepath
         #
     def trainIter(self, fix, moving, fixed_label, moving_label, fixed_nopad=None, seg_f=None):
-        if not os.path.exists('seg_imgs_102422_transaffine_aligned'):
-            os.mkdir('seg_imgs_102422_transaffine_aligned')
-        seg_fname = "seg_imgs_102422_transaffine_aligned/e"+str(self.cur_epoch)+"idx"+str(self.cur_idx)
+        segimg_logfile = "seg_imgs"
+        if not os.path.exists(os.path.join(self.log, segimg_logfile)):
+            os.makedirs(os.path.join(self.log, segimg_logfile))
+        seg_fname = os.path.join(self.log, segimg_logfile, "e") + str(self.cur_epoch) + "idx" + str(self.cur_idx)
         if seg_f is not None:
             seg_fname = seg_fname + "_" + seg_f
 
-        sim_loss, grad_loss, affine_sim_loss, dice = self.model.forward(fix, moving, fixed_label, moving_label, fix_nopad=fixed_nopad, 
+        sim_loss, grad_loss, dice = self.model.forward(fix, moving, fixed_label, moving_label, fix_nopad=fixed_nopad, 
                                                        rtloss=True, eval=True, dice_labels=self.train_dataloader.dataset.dice_labels, 
                                                        seg_fname=seg_fname)
-        sim_loss, grad_loss, affine_sim_loss, dice = sim_loss.mean(), grad_loss.mean(), affine_sim_loss.mean(), dice.mean()
-        loss = float(self.args.weight[0])*sim_loss + float(self.args.weight[1])*grad_loss + affine_sim_loss
+        sim_loss, grad_loss, dice = sim_loss.mean(), grad_loss.mean(), dice.mean()
+        loss = float(self.args.weight[0])*sim_loss + float(self.args.weight[1])*grad_loss
         if self.global_idx%self.printfreq ==0:
             logging.info(f'simloss={sim_loss}, segfname={seg_f}, gradloss={grad_loss}, loss={loss}, dice={(dice*100):2f}')
         if self.tb is not None:
@@ -83,11 +85,12 @@ class TrainModel():
         logging.info("Evaluation started")
         idx = 0
         for _, samples in enumerate(self.test_dataloader):
-            p = int(samples[-1])
-            samples = samples[:-1]
+            p = int(samples[-2])
+            seg_fname = samples[-1]
+            samples = samples[:-2]
             fixed, fixed_label, moving, moving_label, fixed_nopad = self.data_extract(samples)
             dice = self.model.forward(fixed, moving,  fixed_label, moving_label, fixed_nopad, rtloss=False, eval=True, 
-                                      seg_fname='seg_imgs_102422_transaffine_aligned/vale'+str(epoch)+'idx'+str(idx), dice_labels=self.train_dataloader.dataset.dice_labels)
+                                      seg_fname=seg_fname, dice_labels=self.train_dataloader.dataset.dice_labels)
             dice = dice.mean()
             tst_dice.update(dice.item())
             idx+=1
@@ -102,17 +105,12 @@ class TrainModel():
         self.model.train()
         idx = 0
         for _, samples in enumerate(self.train_dataloader):
-            p = int(samples[-1])
-            samples = samples[:-1]
+            p = int(samples[-2])
+            seg_fname = samples[-1][0]
+            samples = samples[:-2]
             fixed, fixed_label, moving, moving_label, fixed_nopad = self.data_extract(samples)
             self.global_idx += 1
             self.cur_idx = idx
-            # seg_fname = self.train_dataloader.dataset.filenames[self.train_dataloader.dataset.pairs[p][1]].split('.')[-3]
-            # seg_fname = "m"+ str(self.train_dataloader.dataset.imgpath[self.train_dataloader.dataset.pairs[p][0]].split('/')[-4]) + \
-                        # "f" + str(self.train_dataloader.dataset.imgpath[self.train_dataloader.dataset.pairs[p][1]].split('/')[-4])
-            seg_fname = "m"+ str(self.train_dataloader.dataset.imgpath[p].split('/')[-4]) + \
-                        "f" + str("/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/MR/2/T1DUAL/DICOM_anon/InPhase".split('/')[-4])
-            # seg_fname = self.train_dataloader.dataset.imgpath[p].split('/')[-4]
             logging.info(f'iteration={idx}/{len(self.train_dataloader)}')
             trloss, trdice = self.trainIter(fixed, moving, fixed_label, moving_label, fixed_nopad=fixed_nopad, seg_f=seg_fname)
             optimizer.zero_grad()
@@ -185,7 +183,7 @@ class TrainUncertModel(TrainModel):
         self.printfreq=50
         #
         if args.logfile:
-            savepath = args.logfile
+            savepath = os.apth.join(args.logfile, 'ckpts')
         else:
             savepath = './uncert'
         if not os.path.isdir(savepath):

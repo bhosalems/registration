@@ -322,7 +322,7 @@ class RegNet(nn.Module):
             sloss = sim_loss
             
             # Mahesh : If similarity loss is greater than 65%, we will convert tensors to nifti for visualization.
-            if sloss*-1 >= 0.65:
+            if sloss*-1 >= 0.80:
                 fnames = []
                 fnames.append(seg_fname+"true.nii.gz")
                 fnames.append(seg_fname+"warp.nii.gz")
@@ -347,9 +347,9 @@ class RegNet(nn.Module):
                 # warped_seg = torch.max(warped_seg.detach(),dim=1)[1]
                 # dice  = self.dice_val_VOI(warped_seg, fix_label, dice_labels, fix_nopad, seg_fname)
                 # logging.info(f'eval_dice : {e_dice} dice : {dice}')
-                return sloss, grad_loss, affine_sim_loss, dice
+                return sloss, grad_loss, dice
             else:
-                return sloss, grad_loss, affine_sim_loss
+                return sloss, grad_loss
         else:
             if eval:
                 dice = self.eval_dice(fix_label, moving_label, flow, fix_nopad, seg_fname=seg_fname, save_nii=save_nii)
