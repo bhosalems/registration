@@ -174,9 +174,9 @@ class RegNet(nn.Module):
         self.winsize = winsize
         self.n_class = n_class
         
-        self.affine_config = config = TransMorph_affine.CONFIGS['TransMorph-Affine']
-        self.afiine_infer  = TransMorph_affine.ApplyAffine()
-        self.affine_model = TransMorph_affine.SwinAffine(config)
+        # self.affine_config = config = TransMorph_affine.CONFIGS['TransMorph-Affine']
+        # self.afiine_infer  = TransMorph_affine.ApplyAffine()
+        # self.affine_model = TransMorph_affine.SwinAffine(config)
         
         #feat
         # self.feat_conv= conv_fn(dec_nf[-1]+num_classes, num_classes, kernel_size = 3, stride = 1, padding = 1)
@@ -288,16 +288,17 @@ class RegNet(nn.Module):
         # fix = fix.unsqueeze(-5)
         
         # Do affine alignment first
-        x = torch.cat([moving, fix], dim = 1)
-        ct_aff, mat, inv_mats = self.affine_model(x)
-        phan = fix
-        affine_sim_loss, affine_sim_mask = ncc_loss(ct_aff, phan, reduce_mean=False, winsize=self.winsize)
-        if affine_sim_mask.any():
-            affine_sim_loss = affine_sim_loss[affine_sim_mask].mean()
-        else:
-            affine_sim_loss = torch.Tensor(np.array([0]))[0]
+        # x = torch.cat([moving, fix], dim = 1)
+        # ct_aff, mat, inv_mats = self.affine_model(x)
+        # phan = fix
+        # affine_sim_loss, affine_sim_mask = ncc_loss(ct_aff, phan, reduce_mean=False, winsize=self.winsize)
+        # if affine_sim_mask.any():
+        #     affine_sim_loss = affine_sim_loss[affine_sim_mask].mean()
+        # else:
+        #     affine_sim_loss = torch.Tensor(np.array([0]))[0]
         
-        x = torch.cat([ct_aff, fix], dim = 1)
+        # x = torch.cat([ct_aff, fix], dim = 1)
+        x = torch.cat([moving, fix], dim=1)
         unet_out = self.unet(x)
         save_nii = False
         flow = self.conv(unet_out)

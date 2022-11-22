@@ -239,7 +239,7 @@ class ChaosDataset(Dataset):
         for img in Path(data_path).rglob("*" + self.ext): # currrently this loop runs only once
             data = nibabel.load(img)
             data = np.array(data.get_fdata())
-        print(img, data.shape)
+        # print(img, data.shape)
         
         # normalize
         mean = np.mean(data)
@@ -251,7 +251,8 @@ class ChaosDataset(Dataset):
         # print("data min\n" + str(data.min()))
         # print("data max\n" + str(data.max()))
         y = np.clip(data, minp, maxp)
-        z = (y-y.min())/y.max()
+        z = (y-y.min())
+        z = z/z.max()
         data = z
         # mean = np.mean(data)
         # std = np.std(data)
@@ -292,11 +293,11 @@ class ChaosDataset(Dataset):
         # print(self.imgpath[index])
         # print("/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/MR/2/T1DUAL/DICOM_anon/InPhase/IMG-2.nii.gz")
         movingimg, moving_nopad = self.preprocess_img(self.imgpath[index], pad=self.pad, pad_sz=self.size)
-        fixedimg, fixed_nopad = self.preprocess_img('/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/MR/2/T1DUAL/DICOM_anon/InPhase', pad=self.pad, pad_sz=self.size)
+        fixedimg, fixed_nopad = self.preprocess_img('/home/csgrad/mbhosale/Datasets/CHAOS_preprocessed/CHAOS_Train_Sets/Train_Sets/MR/2/T1DUAL/DICOM_anon/InPhase', pad=self.pad, pad_sz=self.size)
         assert(movingimg.shape==fixedimg.shape)
         if len(self.segpath)!=0:
             moving_seg = self.preprocess_seg(self.segpath[index], pad=self.pad, pad_sz=self.size)
-            fixed_seg = self.preprocess_seg('/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/MR/2/T1DUAL/Ground', pad=self.pad, pad_sz=self.size)
+            fixed_seg = self.preprocess_seg('/home/csgrad/mbhosale/Datasets/CHAOS_preprocessed/CHAOS_Train_Sets/Train_Sets/MR/2/T1DUAL/Ground', pad=self.pad, pad_sz=self.size)
             # moving_seg = self.preprocess_seg("/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR/19/T1DUAL/Ground", pad=self.pad, pad_sz=self.size)
             # fixed_seg = self.preprocess_seg("/data_local/mbhosale/CHAOS/CHAOS_Train_Sets/Train_Sets/MR/34/T1DUAL/Ground", pad=self.pad, pad_sz=self.size)
             assert(fixed_seg.shape==moving_seg.shape)

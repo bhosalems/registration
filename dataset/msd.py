@@ -6,6 +6,8 @@ from torch.utils.data import Dataset
 import itertools
 import math
 import random
+import SimpleITK as sitk
+import cv2
 
 import logging
 # setting path
@@ -16,8 +18,6 @@ from dataset.transform import random_transform, random_transform_elastic
 
 def NIISplit(img_path, label_path, dataset = 'hippocampus', mode = 'vm', train = 0, trainseg=0, valseg = 0, valreg = 0, 
         regmode = 'sample', tr_percent=1, bootstrap_prop=1, divide =None):
-    #img_path = os.path.join(datapath, 'data')
-    #label_path = os.path.join(datapath, 'labels')
     img_path = os.path.expanduser(img_path)
     label_path = os.path.expanduser(label_path)
 
@@ -28,9 +28,9 @@ def NIISplit(img_path, label_path, dataset = 'hippocampus', mode = 'vm', train =
     elif dataset == 'prostate':
         test_index = [16, 4, 32, 20, 43, 18, 6, 1]
         pad_size = (240,240,96)
-    elif dataset == "Liver":
-        test_index = []
-        pad_size = [512, 512, 1000]
+    elif dataset == "liver":
+        test_index = [10, 33, 41, 67, 98, 123, 114, 79, 82, 55]
+        pad_size = [256, 256, 128]
     # 
     test_filenames = []
     train_filenames = []
@@ -44,7 +44,6 @@ def NIISplit(img_path, label_path, dataset = 'hippocampus', mode = 'vm', train =
             test_filenames.append(file)
         else:
             train_filenames.append(file)
-
     # import ipdb; ipdb.set_trace()
     if trainseg:
         train_seg_data = NIIDatasetTestSeg(imgpath=img_path, labelpath =label_path, 
@@ -106,12 +105,16 @@ def MSD_dataloader(dataset, bsize, num_workers, datapath='~/data/MSD', tr_percen
     return train_dataloader, valseg_dataloader, valreg_dataloader
 
 class NIIDatasetPaired(Dataset):
-    def __init__(self, imgpath=None, labelpath=None, filenames = None, mode ='vm', initdata = True, tr_percent=1, padsize=(48,64,48), divide=None):
+    def __init__(self, imgpath=None, labelpath=None, filenames = None, mode ='vm', initdata = False, tr_percent=1, padsize=(48,64,48), divide=None):
         self.imgpath = imgpath
         self.labelpath = labelpath
         self.filenames = filenames
         n = len(self.filenames)
-        self.dice_labels = [0, 1, 2, 3]
+        path_names = self.imgpath.split("/")
+        if "liver" in path_names:
+            self.dice_labels = [0, 1, 2]
+        else:
+            self.dice_labels = [0, 1, 2, 3]
         if tr_percent<1:
             # n = int(n*tr_percent)
             n=4
@@ -121,10 +124,8 @@ class NIIDatasetPaired(Dataset):
         # import ipdb; ipdb.set_trace()
         # if (divide is not None) and (self.pairs is not None):
         if (divide is not None):
-            # max_below = divide*(len(self.pairs)//divide)
-            # logging.info(f'{len(self.pairs)}divide by{divide} to get {max_below}')
-            # self.pairs = self.pairs[:max_below]
-            max_below = 10
+            max_below = divide*(len(self.pairs)//divide)
+            logging.info(f'{len(self.pairs)}divide by{divide} to get {max_below}')
             self.pairs = self.pairs[:max_below]
         
         # import ipdb; ipdb.set_trace()
@@ -159,8 +160,12 @@ class NIIDatasetPaired(Dataset):
             moving_label = moving['label']
         else:
             f1 = self.filenames[i[0]]
-            f2 = self.filenames[i[1]] 
-
+            seg_fname = "f"+ self.filenames[i[0]].split('.')[-3].split("_")[-1]
+            # TODO Mahesh : Add some good heuristic or other logic to choose the fixed image, the MSD liuver dataset is huge
+            # with arround 121 total volumes and therefore 121* 121 ~ 14000 samples ~ 10 days of mere training. 
+            f2 = self.filenames[i[1]]
+            seg_fname = seg_fname + "m"+ self.filenames[i[0]].split('.')[-3].split("_")[-1]
+            
             data_path = os.path.join(self.imgpath,f1)
             label_path = os.path.join(self.labelpath,f1)
             fixed_data, fix_nopad = preprocess(data_path, isimg = True, padsize=self.pad_size)
@@ -171,11 +176,11 @@ class NIIDatasetPaired(Dataset):
             moving_data, moving_nopad = preprocess(data_path, isimg = True, padsize=self.pad_size)
             moving_label, _ = preprocess(label_path, isimg = False, padsize=self.pad_size)
         if self.mode == 'vm':
-            return fixed_data, fixed_label, fix_nopad, moving_data, moving_label, idx
+            return fixed_data, fixed_label, fix_nopad, moving_data, moving_label, idx, seg_fname
         else:
             fix2, fix2_label, fix2_nopad, displacement = random_transform(
                 moving_data, moving_label, moving_nopad, rot=1, scale=1, translate=1)
-            return fixed_data, fixed_label, fix_nopad, moving_data, moving_label, fix2, fix2_label, fix2_nopad, displacement, idx
+            return fixed_data, fixed_label, fix_nopad, moving_data, moving_label, fix2, fix2_label, fix2_nopad, displacement
 
         
         # fixed_data2, fixed_label2, displacement = random_transform(self.moving_data, self.moving_label)
@@ -203,6 +208,7 @@ class NIIDatasetTestReg(Dataset):
         return len(self.pairs) 
 
     def __getitem__(self,idx):
+        # NOTE with this option, we cant trust on the segment image file names, as fixed image is just the transform of the moving image.
         if self.mode == 'trans':
             f1 = self.filenames[idx]
             # fix, fix_idx= preprocess(os.path.join(self.imgpath, f1), isimg=True)
@@ -213,17 +219,19 @@ class NIIDatasetTestReg(Dataset):
             moving_label, _ = preprocess(os.path.join(self.labelpath, f1), isimg=False, padsize=self.pad_size)
             fix, fixlabel, fix_nopad, displacement = random_transform(moving_data, moving_label, moving_nopad, rot=1, scale=1, translate=1)
 
-            return fix, fixlabel, fix_nopad, moving_data, moving_label, displacement
+            return fix, fixlabel, fix_nopad, moving_data, moving_label, displacement, idx
         else:
             i = self.pairs[idx]
             f1 = self.filenames[i[0]]
             f2 = self.filenames[i[1]]
+            seg_fname = "f"+ f1.split('.')[-3].split("_")[-1]
+            seg_fname = seg_fname + "m"+ f2.split('.')[-3].split("_")[-1]
             fix_data, fix_nopad= preprocess(os.path.join(self.imgpath, f1), isimg=True, padsize=self.pad_size)
             fix_label, _ = preprocess(os.path.join(self.labelpath, f1), isimg=False, padsize=self.pad_size)
 
             moving_data, _= preprocess(os.path.join(self.imgpath, f2), isimg=True, padsize=self.pad_size)
             moving_label, _ = preprocess(os.path.join(self.labelpath, f2), isimg=False, padsize=self.pad_size)
-            return fix_data, fix_label, fix_nopad, moving_data, moving_label, idx
+            return fix_data, fix_label, fix_nopad, moving_data, moving_label, idx, seg_fname
 
   
 class NIIDatasetTestSeg(Dataset):
@@ -232,11 +240,15 @@ class NIIDatasetTestSeg(Dataset):
         self.labelpath = labelpath
         self.filenames = test_names
         self.corres_names = []
-        #self.train_names = train_names
+        # self.train_names = train_names
         self.pad_size = padsize
-        # import ipdb; ipdb.set_trace()
+        
+        # TODO Mahesh: Commenting it for some time becuase we do not want to choose the fixed image 
+        # from the train data. >> It is possible to use such setting for the testing.
         for filename in test_names:
             data, _ = preprocess(os.path.join(self.imgpath, filename), isimg=True, padsize=self.pad_size)
+            # print(np.max(data))
+            # print(np.min(data))
             ts_1 = torch.unsqueeze(torch.unsqueeze( torch.from_numpy(data), 0), 0)
             ncc_best = 0
             for tr_name in train_names:
@@ -259,14 +271,15 @@ class NIIDatasetTestSeg(Dataset):
     def __getitem__(self,idx):
         f1 = self.filenames[idx]
         f2 = self.corres_names[idx]
-
+        seg_fname = "f"+ f2.split('.')[-3].split("_")[-1]
+        seg_fname = seg_fname + "m"+ f1.split('.')[-3].split("_")[-1]
         moving_data, _ = preprocess(os.path.join(self.imgpath, f1), isimg=True, padsize=self.pad_size)
         moving_label, _ = preprocess(os.path.join(self.labelpath, f1), isimg=False, padsize=self.pad_size) 
 
         fix_data, fix_nopad= preprocess(os.path.join(self.imgpath, f2), isimg=True, padsize=self.pad_size)
         fix_label, _ = preprocess(os.path.join(self.labelpath, f2), isimg=False, padsize=self.pad_size) 
 
-        return fix_data,  fix_label, fix_nopad, moving_data, moving_label
+        return fix_data,  fix_label, fix_nopad, moving_data, moving_label, idx, seg_fname
 
 
 class NIIDatasetAllTestSeg(Dataset):
@@ -302,6 +315,8 @@ class NIIDatasetAllTestSeg(Dataset):
     def __getitem__(self,idx):
         f1 = self.filenames[idx]
         f2 = self.corres_names[idx]
+        seg_fname = "f"+ f2.split('.')[-3].split("_")[-1]
+        seg_fname = seg_fname + "m"+ f1.split('.')[-3].split("_")[-1]
 
         moving_data, _ = preprocess(os.path.join(self.imgpath, f1), isimg=True, padsize=self.pad_size)
         moving_label, _ = preprocess(os.path.join(self.labelpath, f1), isimg=False, padsize=self.pad_size) 
@@ -309,7 +324,7 @@ class NIIDatasetAllTestSeg(Dataset):
         fix_data, fix_nopad= preprocess(os.path.join(self.imgpath, f2), isimg=True, padsize=self.pad_size)
         fix_label, _ = preprocess(os.path.join(self.labelpath, f2), isimg=False, padsize=self.pad_size) 
 
-        return fix_data,  fix_label, fix_nopad, moving_data, moving_label
+        return fix_data,  fix_label, fix_nopad, moving_data, moving_label, idx, seg_fname
 
 
 def pad(x, shape):
@@ -332,14 +347,34 @@ def normalize(x):
     maxp = mean + 6*std
     minp = mean - 6*std
     y = np.clip(x, minp, maxp)
-    z = (y-y.min())/y.max()
+    z = (y-y.min())
+    z = z / z.max()
     return z
+
+
+# # python function replica of matlab's mat2gray
+def matlab_mat2grey(A = False):
+    alpha = min(A.flatten())
+    beta = max(A.flatten())
+    I = A
+    cv2.normalize(A, I, alpha , beta ,cv2.NORM_MINMAX)
+    I = np.uint8(I)
+    return I
 
 
 def preprocess(name, padsize = (48,64,48), isimg=False): #resample=[1,1,1], 
     image = np.array(nibabel.load(name).get_fdata())
+    # image = image - image.min()
+    # A = np.double(image)
+    # out = np.zeros(A.shape, np.double)
+    # normalized = cv2.normalize(A, out, 1.0, 0.0, cv2.NORM_MINMAX)
+    # normalized = matlab_mat2grey(image)
+    # normalized = sitk.GetImageFromArray(normalized)
+    # sitk.WriteImage(normalized, 'test_image.nii.gz')
     if isimg:
         image = normalize(image)
+        # normalized = sitk.GetImageFromArray(image)
+        # sitk.WriteImage(normalized, 'test_image.nii.gz')
     image, nopad = pad(image, padsize)
     return image, nopad
 
