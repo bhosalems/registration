@@ -22,7 +22,6 @@ import math
 
 CANDI_PATH = r'/data_local/mbhosale/CANDI_split'
 MSD_PATH = r'/data_local/mbhosale/MSD'
-# MSD_PATH = r'/home/csgrad/mbhosale/Datasets/MSD/'
 IXI_PATH = r'/home/csgrad/mbhosale/Image_registration/TransMorph_Transformer_for_Medical_Image_Registration/IXI/IXI_data/'
 BraTS_PATH = r'/home/csgrad/mbhosale/Image_registration/datasets/BraTS2018'
 BraTS_save_PATH = r'/home/csgrad/mbhosale/Image_registration/datasets/BraTS2018/'
@@ -93,7 +92,6 @@ if __name__ == "__main__":
         NUM_CLASS = 29
         train_dataloader, test_dataloader = candi.CANDI_dataloader(args, datapath=CANDI_PATH, size=pad_size)
     elif args.dataset == 'prostate' or args.dataset == 'hippocampus' or args.dataset == "liver":
-        train_dataloader, test_dataloader, _ = msd.MSD_dataloader(args.dataset, args.bsize, args.num_workers, datapath=MSD_PATH)
         NUM_CLASS = 3
         if args.dataset == 'hippocampus': 
             window_r = 5
@@ -107,6 +105,7 @@ if __name__ == "__main__":
             pad_size = [240, 240, 96]
         else:
             pad_size = [256, 256, 128]
+        train_dataloader, test_dataloader, _ = msd.MSD_dataloader(args.dataset, args.bsize, args.num_workers, pad_size, datapath=MSD_PATH)
     elif args.dataset == 'IXI':
         train_dataloader, test_dataloader = ixi.IXI_dataloader(datapath=IXI_PATH, batch_size=args.bsize, num_workers=4)
         pad_size = [160, 192, 224]

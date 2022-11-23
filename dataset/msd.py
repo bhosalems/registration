@@ -16,7 +16,7 @@ sys.path.append('../')
 import losses
 from dataset.transform import random_transform, random_transform_elastic
 
-def NIISplit(img_path, label_path, dataset = 'hippocampus', mode = 'vm', train = 0, trainseg=0, valseg = 0, valreg = 0, 
+def NIISplit(img_path, label_path, pad_size, dataset = 'hippocampus', mode = 'vm', train = 0, trainseg=0, valseg = 0, valreg = 0, 
         regmode = 'sample', tr_percent=1, bootstrap_prop=1, divide =None):
     img_path = os.path.expanduser(img_path)
     label_path = os.path.expanduser(label_path)
@@ -24,13 +24,10 @@ def NIISplit(img_path, label_path, dataset = 'hippocampus', mode = 'vm', train =
     if dataset=='hippocampus':
         test_index = [349, 251, 50, 363, 197, 96, 334, 345, 355, 298, 232, 49, 205, \
             338, 101, 38, 311, 223, 390, 204, 221, 350, 180, 276, 177, 124]
-        pad_size = (48,64,48)
     elif dataset == 'prostate':
         test_index = [16, 4, 32, 20, 43, 18, 6, 1]
-        pad_size = (240,240,96)
     elif dataset == "liver":
         test_index = [10, 33, 41, 67, 98, 123, 114, 79, 82, 55]
-        pad_size = [256, 256, 128]
     # 
     test_filenames = []
     train_filenames = []
@@ -73,12 +70,12 @@ def NIISplit(img_path, label_path, dataset = 'hippocampus', mode = 'vm', train =
     return train_data, val_seg_data, val_reg_data
   
 
-def MSD_dataloader(dataset, bsize, num_workers, datapath='~/data/MSD', tr_percent=1, testseg=1, testreg=0):
+def MSD_dataloader(dataset, bsize, num_workers, pad_size, datapath='~/data/MSD', tr_percent=1, testseg=1, testreg=0):
     imgpath = f'{datapath}/{dataset}/all/data'
     labelpath =  f'{datapath}/{dataset}/all/labels'
     
     train_data, val_seg_data, val_reg_data = NIISplit(
-        imgpath, labelpath, mode = 'vm', train=1, valseg=testseg, valreg=testreg, divide = None,
+        imgpath, labelpath, pad_size, mode = 'vm', train=1, valseg=testseg, valreg=testreg, divide = None,
         tr_percent = tr_percent, dataset = dataset, bootstrap_prop=1)
     
     # import ipdb; ipdb.set_trace()
@@ -103,6 +100,30 @@ def MSD_dataloader(dataset, bsize, num_workers, datapath='~/data/MSD', tr_percen
             shuffle=True,
             num_workers=num_workers) 
     return train_dataloader, valseg_dataloader, valreg_dataloader
+
+def MSD_test_dataloader(dataset, bsize, pad_size, datapath='~/data/MSD', testseg=1, testreg=0):
+    imgpath = f'{datapath}/{dataset}/all/data'
+    labelpath =  f'{datapath}/{dataset}/all/labels'
+    
+    train_data, val_seg_data, val_reg_data = NIISplit(
+        imgpath, labelpath, pad_size, mode = 'vm', train=0, valseg=testseg, valreg=testreg, divide = None,
+        tr_percent = 0, dataset = dataset, bootstrap_prop=1)
+    
+    # import ipdb; ipdb.set_trace()
+    valseg_dataloader, valreg_dataloader = None, None
+    if testseg:
+        valseg_dataloader = torch.utils.data.DataLoader(
+            val_seg_data,
+            batch_size=bsize,
+            shuffle=True,
+            num_workers=1)
+    if testreg:
+        valreg_dataloader = torch.utils.data.DataLoader(
+            val_reg_data,
+            batch_size=bsize,
+            shuffle=True,
+            num_workers=1) 
+    return valseg_dataloader, valreg_dataloader
 
 class NIIDatasetPaired(Dataset):
     def __init__(self, imgpath=None, labelpath=None, filenames = None, mode ='vm', initdata = False, tr_percent=1, padsize=(48,64,48), divide=None):
@@ -196,6 +217,13 @@ class NIIDatasetTestReg(Dataset):
         pairs = itertools.product(range(n),range(n))
         self.pairs = list(pairs)
         random.shuffle(self.pairs)
+        
+        path_names = self.imgpath.split("/")
+        if "liver" in path_names:
+            self.dice_labels = [0, 1, 2]
+        else:
+            self.dice_labels = [0, 1, 2, 3]
+            
         # import ipdb; ipdb.set_trace()
         # if (divide is not None) and (self.pairs is not None):
         if (divide is not None):
@@ -243,6 +271,12 @@ class NIIDatasetTestSeg(Dataset):
         # self.train_names = train_names
         self.pad_size = padsize
         
+        path_names = self.imgpath.split("/")
+        if "liver" in path_names:
+            self.dice_labels = [0, 1, 2]
+        else:
+            self.dice_labels = [0, 1, 2, 3]
+            
         # TODO Mahesh: Commenting it for some time becuase we do not want to choose the fixed image 
         # from the train data. >> It is possible to use such setting for the testing.
         for filename in test_names:
@@ -290,6 +324,12 @@ class NIIDatasetAllTestSeg(Dataset):
         self.corres_names = []
         #self.train_names = train_names
         self.pad_size = padsize
+        path_names = self.imgpath.split("/")
+        if "liver" in path_names:
+            self.dice_labels = [0, 1, 2]
+        else:
+            self.dice_labels = [0, 1, 2, 3]
+            
         # import ipdb; ipdb.set_trace()
         for filename in test_names:
             data, _ = preprocess(os.path.join(self.imgpath, filename), isimg=True, padsize=self.pad_size)
