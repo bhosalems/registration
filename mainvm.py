@@ -15,6 +15,7 @@ import dataset.msd as msd
 import dataset.ixi as ixi
 import dataset.braTS as brats
 import dataset.chaos as chaos
+import dataset.learn2reg as learn2reg
 from torch.optim.lr_scheduler import StepLR
 from train import TrainModel
 from models import RegNet
@@ -26,6 +27,7 @@ IXI_PATH = r'/home/csgrad/mbhosale/Image_registration/TransMorph_Transformer_for
 BraTS_PATH = r'/home/csgrad/mbhosale/Image_registration/datasets/BraTS2018'
 BraTS_save_PATH = r'/home/csgrad/mbhosale/Image_registration/datasets/BraTS2018/'
 CHAOS_PATH = r'/home/csgrad/mbhosale/Datasets/CHAOS_preprocessed/'
+L2R_DATAPATH = r"/home/csgrad/mbhosale/Datasets/learn2reg/AbdomenMRCT/"
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -66,26 +68,9 @@ if __name__ == "__main__":
         args.log = os.path.join(args.log, args.dataset, datetime.now().strftime("%m_%d_%y_%H_%M"))
         if not os.path.isdir(args.log):
             os.makedirs(args.log)
-    if args.debug:
-        logfile = os.path.join(args.log, 'logs_wnidow_5.txt')
-    else:
-        logfile = os.path.join(args.logfile, f'{datetime.now().strftime("%m%d%H%M")}.txt')
-    handlers.append(logging.FileHandler(
-        logfile, mode='a'))
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s', handlers=handlers,     
-    )
-    logging.info(args)
     #load model
     #device = torch.device(0)
-    device = torch.device("cuda")
-    logging.info(f'Device: {device}')
-
-    logging.info(f"DEVICE COUNT {torch.cuda.device_count()}")
     gpu = [int(i) for i in range(torch.cuda.device_count())]
-    logging.info(f'GPU: {args.gpu}')
-
     if args.dataset=='CANDI':
         pad_size=[160, 160, 128]
         window_r = 7
@@ -129,13 +114,19 @@ if __name__ == "__main__":
                                                          bsize=1, tr_modality=args.tr_modality, tr_phase=args.tr_phase, tst_modality=args.tst_modality, 
                                                          tst_phase=args.tst_phase, size=pad_size, data_split=False, n_fix=1, tr_num_samples=0, 
                                                          tst_num_samples=10)
-        if pad_size[-1]%downsample_rate != 0:
+        if pad_size[-1]%downsample_rate != 0:               
             orig_size = pad_size
             c_dim = orig_size[-1]
             pad_size[-1] += abs(c_dim - (math.ceil(c_dim/downsample_rate)*downsample_rate))
         window_r = 11
         NUM_CLASS = 5
-
+    elif args.dataset == "learn2reg":
+        pad_size = [192, 160, 192]
+        train_dataloader, test_dataloader = learn2reg.l2r_dataloader(datapath=L2R_DATAPATH, 
+                                                                     size=pad_size, mod="MR", bsize=1, num_workers=1)
+        window_r = 7
+        NUM_CLASS = 5
+         
     ##BUILD MODEL##
     model = RegNet(pad_size, winsize=window_r, dim=3, n_class=NUM_CLASS).cuda()
     
@@ -152,6 +143,23 @@ if __name__ == "__main__":
     # # scheduler = StepLR(opt, step_size=5, gamma=0.1)
     # scheduler = None
     # import ipdb; ipdb.set_trace()
+    
+    if args.debug:
+        logfile = os.path.join(args.log, 'logs_wnidow_{window_r}.txt')
+    else:
+        logfile = os.path.join(args.logfile, f'{datetime.now().strftime("%m%d%H%M")}.txt')
+    handlers.append(logging.FileHandler(
+        logfile, mode='a'))
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s', handlers=handlers,     
+    )
+    logging.info(args)
+    device = torch.device("cuda")
+    logging.info(f'Device: {device}')
+
+    logging.info(f"DEVICE COUNT {torch.cuda.device_count()}")
+    logging.info(f'GPU: {args.gpu}')
     
     if not args.debug:
         writer_comment = f'{args.logfile}'#'_'.join(['vm','un'+str(args.uncert), str(args.weight), args.logfile]) 

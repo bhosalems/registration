@@ -105,7 +105,7 @@ def mk_grid_img(shp, grid_step, line_thickness=1):
 #         grid_img[i+line_thickness-1, :, :] = 1
 #     return grid_img
 
-def tensor2nii(pred, true, fnames, mode, one_hot=True, flow=None, grid_flow=None):
+def tensor2nii(pred, true, fnames, mode, one_hot=True, flow=None, grid_flow=None, CHAOS=False):
         assert(len(fnames)>=2)        
         assert(len(pred.shape)==5)
         assert(len(true.shape)==5)
@@ -117,20 +117,23 @@ def tensor2nii(pred, true, fnames, mode, one_hot=True, flow=None, grid_flow=None
             true = true[0, ...].numpy().astype(np.uint8)
             pred = pred[0, ...].numpy().astype(np.uint8)
             
-            true = np.where((true>=50) & (true<=70), 1, true) # Liver
-            true = np.where((true>=110) & (true<=135), 2, true) # Right Kidney
-            true = np.where((true>=175) & (true<=200), 3, true) # Left Kidney
-            true = np.where((true>=240) & (true<=255), 4, true) # Spl
+            if CHAOS:
+                true = np.where((true>=50) & (true<=70), 1, true) # Liver
+                true = np.where((true>=110) & (true<=135), 2, true) # Right Kidney
+                true = np.where((true>=175) & (true<=200), 3, true) # Left Kidney
+                true = np.where((true>=240) & (true<=255), 4, true) # Spl
+            
             # Mahesh : Q. Is this the right way to save the numpy array as the nifty label? >> works now after taking tanspose.
             seg = sitk.GetImageFromArray(np.moveaxis(true, [0, 1, 2], [-1, -2, -3]))
             output_file = fnames[0] + ".nii.gz"
             sitk.WriteImage(seg, output_file)
             
+            if CHAOS:
+                pred = np.where((pred>=50) & (pred<=70), 1, pred) # Liver
+                pred = np.where((pred>=110) & (pred<=135), 2, pred) # Right Kidney
+                pred = np.where((pred>=175) & (pred<=200), 3, pred) # Left Kidney
+                pred = np.where((pred>=240) & (pred<=255), 4, pred) # Spl
             
-            pred = np.where((pred>=50) & (pred<=70), 1, pred) # Liver
-            pred = np.where((pred>=110) & (pred<=135), 2, pred) # Right Kidney
-            pred = np.where((pred>=175) & (pred<=200), 3, pred) # Left Kidney
-            pred = np.where((pred>=240) & (pred<=255), 4, pred) # Spl
             # Mahesh : Q. Is this the right way to save the numpy array as the nifty label? >> works now after taking tanspose.
             seg = sitk.GetImageFromArray(np.moveaxis(pred, [0, 1, 2], [-1, -2, -3]))
             output_file = fnames[1] + ".nii.gz"

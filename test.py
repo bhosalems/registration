@@ -19,7 +19,7 @@ def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--train_dataset', type=str, default='prostate', help='CANDI, prostate, hippocampus, liver')
     parser.add_argument('--test_dataset', type=str, default='CANDI', help='CANDI, prostate, hippocampus, liver')
-    parser.add_argument('--log', default='./logs/', type=str)
+    parser.add_argument('--log', default='./logs/cross_domain_tests/', type=str)
     parser.add_argument('--bsize', default=1, type=int)
     parser.add_argument('--checkpoint')
     return parser.parse_args()
@@ -62,7 +62,7 @@ class TestModel():
         idx = 0
         for _, samples in enumerate(self.test_dataloader):
             p = int(samples[-2])
-            seg_fname = samples[-1]
+            seg_fname = samples[-1][0]
             samples = samples[:-2]
             fixed, fixed_label, moving, moving_label, fixed_nopad = self.data_extract(samples)
             dice = self.model.forward(fixed, moving,  fixed_label, moving_label, fixed_nopad, rtloss=False, eval=True, 
@@ -70,13 +70,15 @@ class TestModel():
             dice = dice.mean()
             tst_dice.update(dice.item())
             logging.info(f'iteration={idx}/{len(self.test_dataloader)}')
-            logging.info(f'{seg_fname}"test dice="{dice.item()}')
+            logging.info(f'{seg_fname} test dice={dice.item()}')
             idx+=1
         logging.info(f'Average test dice= {tst_dice.avg}')
 
 if __name__ == "__main__":
     args = get_args()
-    logfile = os.path.join(args.log, "cross_domain_test.txt")
+    if not os.path.isdir(args.log):
+            os.makedirs(args.log)
+    logfile = os.path.join(args.log, "train_"+ args.train_dataset + "_test_" + args.test_dataset + "_" + datetime.now().strftime("%m_%d_%y_%H_%M")+".txt")
     handlers = [logging.StreamHandler()]
     handlers.append(logging.FileHandler(
         logfile, mode='a'))

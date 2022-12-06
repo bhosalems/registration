@@ -41,13 +41,28 @@ def dice_onehot(vol1, vol2):
     #     dicem[idx] = top / bottom
 
     # return dicem
+    # print(torch.sum(torch.isnan(vol1)))
+    # print(torch.sum(torch.isnan(vol2)))
+    # print(vol1.sum(dim=[0,2,3,4]))
+    # print(vol2.sum(dim=[0,2,3,4]))
     numerator = 2*vol1*vol2
     denominator = vol1 + vol2
+    # print(torch.sum(torch.isnan(numerator)))
+    # print(torch.sum(torch.isnan(denominator)))
+    # print(numerator.sum(dim=[0,2,3,4]))
+    # print(denominator.sum(dim=[0,2,3,4]))
     division = (numerator.sum(dim=[0,2,3,4]) / denominator.sum(dim=[0,2,3,4]))
     # import ipdb; ipdb.set_trace()
     return division.mean()
 
-    
+  
+def nanmean(v, *args, inplace=False, **kwargs):
+    if not inplace:
+        v = v.clone()
+    is_nan = torch.isnan(v)
+    v[is_nan] = 0
+    return v.sum(*args, **kwargs) / len(is_nan)
+  
 def D(pred, sg, num_classes=3):
     
     #sg_onehot = F.one_hot(sg.long(), num_classes=3).float().permute(0,4,1,2,3)
