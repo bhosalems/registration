@@ -45,7 +45,7 @@ import torch
 os.environ['VXM_BACKEND'] = 'pytorch'
 
 import sys
-sys.path.append("/home/csgrad/mbhosale/Image_registration/voxelmorph")
+sys.path.append("/home/csgrad/mbhosale/Image_registration/registration/voxelmorph")
 import voxelmorph as vxm # nopep8
 from voxelmorph.py.utils import *
 from voxelmorph.generators import *
@@ -53,6 +53,8 @@ from voxelmorph.torch.networks import *
 from voxelmorph.torch.losses import *
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
+import logging
+from pathlib import Path
 
 # parse the commandline
 parser = argparse.ArgumentParser()
@@ -60,6 +62,7 @@ parser = argparse.ArgumentParser()
 # data organization parameters
 parser.add_argument('--img-list', required=True, help='line-seperated list of training files')
 parser.add_argument('--seg-list', help='line-seperated list of segmentation files')
+parser.add_argument('--dataset', required=True)
 parser.add_argument('--img-prefix', help='optional input image file prefix')
 parser.add_argument('--img-suffix', help='optional input image file suffix')
 parser.add_argument('--atlas', help='atlas filename (default: data/atlas_norm.npz)')
@@ -102,11 +105,14 @@ args = parser.parse_args()
 
 bidir = args.bidir
 
-if not os.path.exists('./log/'):
-    os.makedirs('./log/tb/')
-logfile = os.path.join('./log/tb/', f'{datetime.now().strftime("%m%d%H%M")}.txt')
-writer_comment = logfile#'_'.join(['vm','un'+str(args.uncert), str(args.weight), args.logfile]) 
-tb = SummaryWriter(comment = writer_comment)
+logdir = "/".join(str(Path(__file__)).split("/")[:-3])
+logdir = os.path.join(logdir, 'log/tb/' f'{datetime.now().strftime("%m%d%H%M")}')
+if not os.path.exists(logdir):
+    os.makedirs(logdir)
+logfile = os.path.join(logdir, 'log.txt')
+tb = SummaryWriter(comment = logfile)
+candi_labels = [2,3,4,7,8,10,11,12,13,14,15,16,17,18,24,28,\
+            41,42,43,46,47,49,50,51,52,53,54,60]
 
 # load and prepare training data
 train_files = vxm.py.utils.read_file_list(args.img_list, prefix=args.img_prefix,
@@ -130,7 +136,7 @@ if args.atlas:
 else:
     # scan-to-scan generator
     generator = vxm.generators.scan_to_scan(
-        train_files, segs=seg_files, batch_size=args.batch_size, bidir=args.bidir, add_feat_axis=add_feat_axis)
+        train_files, segs=seg_files, batch_size=args.batch_size, bidir=args.bidir, add_feat_axis=add_feat_axis, dataset=args.dataset)
 
 # extract shape from sampled input
 inshape = next(generator)[0][0].shape[1:-1]
@@ -201,6 +207,13 @@ weights += [args.weight]
 
 epoch_train_dice = AverageMeter()
 globalidx = 0
+handlers = [logging.StreamHandler()]
+handlers.append(logging.FileHandler(
+        logfile, mode='a'))
+logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s', handlers=handlers,     
+    )
 
 # training loops
 for epoch in range(args.initial_epoch, args.epochs):
@@ -219,18 +232,33 @@ for epoch in range(args.initial_epoch, args.epochs):
 
         # generate inputs (and true outputs) and convert them to tensors
         inputs, y_true = next(generator)
-        inputs = [torch.from_numpy(d).to(device).float().permute(0, 4, 1, 2, 3) for d in inputs]
-        y_true = [torch.from_numpy(d).to(device).float().permute(0, 4, 1, 2, 3) for d in y_true]
-
         source_seg = inputs[-1]
         target_seg = y_true[-1]
         inputs = inputs[:-1]
         y_true = y_true[:-1]
         
+        if args.dataset == "CANDI":
+            seg = np.zeros_like(source_seg)
+            for n,label in enumerate(candi_labels):
+                newlabel = n+1
+                seg[source_seg==label]=newlabel
+            source_seg = torch.from_numpy(seg).to(device).float().permute(0, 4, 1, 2, 3)
+            seg = np.zeros_like(target_seg)
+            for n,label in enumerate(candi_labels):
+                newlabel = n+1
+                seg[target_seg==label]=newlabel
+            target_seg = torch.from_numpy(seg).to(device).float().permute(0, 4, 1, 2, 3)
+        
+        inputs = [torch.from_numpy(d).to(device).float().permute(0, 4, 1, 2, 3) for d in inputs]
+        y_true = [torch.from_numpy(d).to(device).float().permute(0, 4, 1, 2, 3) for d in y_true]
+        
+        print(source_seg.unique())
+        print(target_seg.unique())
+        
         source_seg = torch.squeeze(source_seg, 1).float().cuda()
-        source_seg = torch.nn.functional.one_hot(source_seg.long(), num_classes=5).float().permute(0,4,1,2,3)
+        source_seg = torch.nn.functional.one_hot(source_seg.long(), num_classes=29).float().permute(0,4,1,2,3)
         target_seg = torch.squeeze(target_seg, 1).float().cuda()
-        target_seg = torch.nn.functional.one_hot(target_seg.long(), num_classes=5).float().permute(0,4,1,2,3)
+        target_seg = torch.nn.functional.one_hot(target_seg.long(), num_classes=29).float().permute(0,4,1,2,3)
         
         # run inputs through the model to produce a warped image and flow field
         output = model(*inputs, moving_seg=source_seg, fixed_seg=target_seg)
@@ -249,9 +277,9 @@ for epoch in range(args.initial_epoch, args.epochs):
         epoch_total_loss.append(loss.item())
         epoch_train_dice.update(dice)
         if tb is not None:
-            tb.add_scalar("train/loss", loss.item(), globalidx)
+            tb.add_scalar("train/loss", loss.item(), globalidx)        
         
-        print("Epoch [{}/{}] steps[{}/{}] Dice score:{} Epoch loss:{}".format(epoch, args.epochs+1, step, args.steps_per_epoch, dice, loss.item()))
+        logging.info("Epoch [{}/{}] steps[{}/{}] Dice score:{} Epoch loss:{}".format(epoch, args.epochs+1, step, args.steps_per_epoch, dice, loss.item()))
         globalidx+=1
         # backpropagate and optimize
         optimizer.zero_grad()
@@ -269,6 +297,8 @@ for epoch in range(args.initial_epoch, args.epochs):
     print(' - '.join((epoch_info, time_info, loss_info)), flush=True)
     if tb is not None:
         tb.add_scalar("train/dice", epoch_train_dice.avg, epoch)
+        tb.add_scalar("train/total_loss", np.mean(epoch_total_loss), epoch)
+        
             
 
 # final model save

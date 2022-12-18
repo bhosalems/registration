@@ -13,7 +13,8 @@ def volgen(
     np_var='vol',
     pad_shape=None,
     resize_factor=1,
-    add_feat_axis=True
+    add_feat_axis=True,
+    dataset="CANDI"
 ):
     """
     Base generator for random volume loading. Volumes can be passed as a path to
@@ -67,8 +68,39 @@ def volgen(
 
         yield tuple(vols)
 
+def center_crop(x,size):
+    ori_size=x.shape
+    pad = [int((ori_size[i]-size[i])/2) for i in [0,1,2]]
+    y = x[pad[0]:pad[0]+size[0], pad[1]:pad[1]+size[1], pad[2]:pad[2]+size[2]]
+    return y
 
-def scan_to_scan(vol_names, bidir=False, batch_size=1, prob_same=0, no_warp=False, **kwargs):
+def preprocess_candi_img(data, size):
+        #crop
+        data = center_crop(data, size)
+        #normalize
+        mean = np.mean(data)
+        std = np.std(data, ddof=1)
+        #std_arr = np.sqrt(np.abs(x-mean)/x.size)
+        maxp = mean + 6*std
+        minp = mean - 6*std
+        y = np.clip(data, minp, maxp)
+        #import ipdb; ipdb.set_trace()
+        #linear transform to [0,1]
+        z = (y-y.min())/y.max()
+        return z
+
+def preprocess_candi_seg(data, size, label):
+        #crop
+        data = center_crop(data, size)
+        #filter label
+        n_class = len(label)
+        seg = np.zeros_like(data)
+        for n,label in enumerate(label):
+            newlabel = n+1
+            seg[data==label]=newlabel
+        return seg
+    
+def scan_to_scan(vol_names, bidir=False, batch_size=1, prob_same=0, no_warp=False, dataset="CANDI", **kwargs):
     """
     Generator for scan-to-scan registration.
 
@@ -82,7 +114,7 @@ def scan_to_scan(vol_names, bidir=False, batch_size=1, prob_same=0, no_warp=Fals
         kwargs: Forwarded to the internal volgen generator.
     """
     zeros = None
-    gen = volgen(vol_names, batch_size=batch_size, **kwargs)
+    gen = volgen(vol_names, batch_size=batch_size, dataset="CANDI", **kwargs)
     while True:
         seg1 = seg2 = None
         data = next(gen)
@@ -103,6 +135,12 @@ def scan_to_scan(vol_names, bidir=False, batch_size=1, prob_same=0, no_warp=Fals
                 scan2 = scan1
                 seg2 = seg1
 
+        if dataset == "CANDI":
+            labels =  [2,3,4,7,8,10,11,12,13,14,15,16,17,18,24,28,41,42,43,46,47,49,50,51,52,53,54,60]
+            scan1 = preprocess_candi_img(scan1, [160, 160, 128])
+            scan2 = preprocess_candi_img(scan2, [160, 160, 128])
+            seg1 = preprocess_candi_seg(seg1, [160, 160, 128], label=labels)
+            seg2 = preprocess_candi_seg(seg2, [160, 160, 128], label=labels)
         # cache zeros
         if not no_warp and zeros is None:
             shape = scan1.shape[1:-1]

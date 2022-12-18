@@ -289,7 +289,8 @@ class VxmDense(LoadableModel):
             warped_moving_seg = self.transformer(moving_seg, pos_flow)
         
         warped_moving_seg = torch.max(warped_moving_seg.detach(),dim=1)[1]
-        warped_moving_seg = torch.nn.functional.one_hot(warped_moving_seg.long(), num_classes=5).float().permute(0,4,1,2,3)
+        # should remove the hardcoding of number of classes later.
+        warped_moving_seg = torch.nn.functional.one_hot(warped_moving_seg.long(), num_classes=29).float().permute(0,4,1,2,3)
         dice = self.dicefn(warped_moving_seg, fixed_seg).item()*-1*100
         
         # print("Dice score: " + str(dice))
