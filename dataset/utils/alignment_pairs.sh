@@ -1,6 +1,6 @@
 #!/bin/bash
-DATAPATH="/home/csgrad/mbhosale/Datasets/CHAOS/CHAOS_Train_Sets/Train_Sets/MR/"
-FIXED="2"
+DATAPATH="/home/csgrad/mbhosale/Datasets/CHAOS_preprocessed/CHAOS_Train_Sets/Train_Sets/MR/"
+FIXED="33"
 export FREESURFER_HOME=$HOME/freesurfer
 source $FREESURFER_HOME/SetUpFreeSurfer.sh
 

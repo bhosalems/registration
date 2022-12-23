@@ -13,7 +13,6 @@ import imageio
 import SimpleITK as sitk
 import nibabel as nib
 from utils import *
-from TransMorph_affine import TransMorph_affine
 # from TransMorph_affine import config_affine. as CONFIGS
 
 
@@ -195,7 +194,7 @@ class RegNet(nn.Module):
         # from the spatial transformer is not a single value but the a vector.
         warplabel = torch.max(warped_seg.detach(),dim=1)[1]
         # warplabel = warped_seg.squeeze(0)
-        # torch.save(warplabel, 'warplabel2.pt')
+        # torch.save(warplabel, 'warplabel2.pt')       
         warpseg = torch.nn.functional.one_hot(warplabel.long(), num_classes=self.n_class).float().permute(0, 4, 1, 2, 3)
         dice = dice_onehot(warpseg[:, 1:, :, :, :].detach(), fixed_label[:, 1:, :, :, :].detach())#disregard background
         # Code to debug why sometimes dice is all zero, it appears that the flow is quite bad.

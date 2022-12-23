@@ -184,7 +184,7 @@ def ncc_loss(I, J, winsize=5, reduce_mean=True):
     J2 = J*J
     IJ = I*J
 
-    sum_filt = torch.ones([1, 1, *win]).to("cuda")
+    sum_filt = torch.ones([1, 1, *win]).to(I.device)
 
     pad_no = math.floor(win[0]/2)
 

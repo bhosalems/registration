@@ -26,8 +26,6 @@ class TrainModel():
             savepath = os.path.join(args.log, 'ckpts')
         else:
             savepath = f'ckpts/vm'
-        if not os.path.isdir(savepath):
-            os.makedirs(savepath)
         self.savepath = savepath
         #
     def trainIter(self, fix, moving, fixed_label, moving_label, fixed_nopad=None, seg_f=None):
@@ -37,7 +35,6 @@ class TrainModel():
         seg_fname = os.path.join(self.log, segimg_logfile, "e") + str(self.cur_epoch) + "idx" + str(self.cur_idx)
         if seg_f is not None:
             seg_fname = seg_fname + "_" + seg_f
-
         sim_loss, grad_loss, dice = self.model.forward(fix, moving, fixed_label, moving_label, fix_nopad=fixed_nopad, 
                                                        rtloss=True, eval=True, dice_labels=self.train_dataloader.dataset.dice_labels, 
                                                        seg_fname=seg_fname)
@@ -51,7 +48,7 @@ class TrainModel():
             self.tb.add_scalar("train/sim_loss", sim_loss.item(), self.global_idx)
         return loss, dice
 
-    def data_extract(self, samples):
+    def data_extract(self, samples, device=torch.device(type='cuda', index=0)):
         if len(samples)==4:
             fixed, fixed_label, moving, moving_label = samples
             fixed_nopad = None
@@ -59,13 +56,13 @@ class TrainModel():
             fixed, fixed_label, fixed_nopad, moving, moving_label = samples
             
         # Mahesh : Q. Why we need to unsqeeze? >> Make depth/channel as second dimension for conv, i.e. our volume is gray sclae, so it's 1.
-        moving = torch.unsqueeze(moving, 1).float().cuda()
-        fixed = torch.unsqueeze(fixed, 1).float().cuda()
+        moving = torch.unsqueeze(moving, 1).float().to(device)
+        fixed = torch.unsqueeze(fixed, 1).float().to(device)
         # moving_label = torch.unsqueeze(moving_label, 1).float().cuda()
         # fixed_label = torch.unsqueeze(fixed_label, 1).float().cuda()
-        fixed_label = fixed_label.float().cuda()
+        fixed_label = fixed_label.float().to(device)
         fixed_label = torch.nn.functional.one_hot(fixed_label.long(), num_classes=self.n_class).float().permute(0,4,1,2,3)
-        moving_label = moving_label.float().cuda()
+        moving_label = moving_label.float().to(device)
         moving_label = torch.nn.functional.one_hot(moving_label.long(), num_classes=self.n_class).float().permute(0,4,1,2,3)
         
         if fixed_nopad is not None:
@@ -85,10 +82,11 @@ class TrainModel():
         logging.info("Evaluation started")
         idx = 0
         for _, samples in enumerate(self.test_dataloader):
-            p = int(samples[-2])
-            seg_fname = samples[-1]
+            # TODO need to change this behavior based on the type of the dataset.
+            p = int(samples[-2][0])
+            seg_fname = samples[-1][0]
             samples = samples[:-2]
-            fixed, fixed_label, moving, moving_label, fixed_nopad = self.data_extract(samples)
+            fixed, fixed_label, moving, moving_label, fixed_nopad = self.data_extract(samples, device=self.model.device)
             dice = self.model.forward(fixed, moving,  fixed_label, moving_label, fixed_nopad, rtloss=False, eval=True, 
                                       seg_fname=seg_fname, dice_labels=self.train_dataloader.dataset.dice_labels)
             dice = dice.mean()
@@ -105,10 +103,10 @@ class TrainModel():
         self.model.train()
         idx = 0
         for _, samples in enumerate(self.train_dataloader):
-            p = int(samples[-2])
+            p = int(samples[-2][0])
             seg_fname = samples[-1][0]
             samples = samples[:-2]
-            fixed, fixed_label, moving, moving_label, fixed_nopad = self.data_extract(samples)
+            fixed, fixed_label, moving, moving_label, fixed_nopad = self.data_extract(samples, self.model.device)
             self.global_idx += 1
             self.cur_idx = idx
             logging.info(f'iteration={idx}/{len(self.train_dataloader)}')

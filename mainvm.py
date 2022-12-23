@@ -1,13 +1,8 @@
-import numpy as np
-import random
-from collections import defaultdict
-import itertools
 import os
 import argparse
 import logging
 from datetime import datetime
 import torch
-from torch.optim import Adam, SGD
 from torch.utils.tensorboard import SummaryWriter
 # import nibabel as nib
 import dataset.candi as candi
@@ -16,10 +11,14 @@ import dataset.ixi as ixi
 import dataset.braTS as brats
 import dataset.chaos as chaos
 import dataset.learn2reg as learn2reg
-from torch.optim.lr_scheduler import StepLR
 from train import TrainModel
 from models import RegNet
 import math
+import torch.distributed as dist
+import torch.multiprocessing as mp
+import multiprocessing, logging
+from torch.nn.parallel import DistributedDataParallel as DDP
+from multiprocessing import Pool
 
 CANDI_PATH = r'/data_local/mbhosale/CANDI_split'
 MSD_PATH = r'/data_local/mbhosale/MSD'
@@ -57,20 +56,92 @@ def get_args():
     parser.add_argument('--tst_phase', type=str, default='InPhase', help='test phase')
     return parser.parse_args()
 
+def setup(rank, world_size):
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12356'
+
+    # initialize the process group
+    dist.init_process_group("gloo", rank=rank, world_size=world_size)
+
+def cleanup():
+    dist.destroy_process_group()
+
+def create_logger(args, window_r):
+    if args.debug:
+        logfile = os.path.join(args.log, "logs_wnidow_{}.txt".format(window_r))
+    else:
+        logfile = os.path.join(args.logfile, f'{datetime.now().strftime("%m%d%H%M")}.txt')
+    logger = multiprocessing.get_logger()
+    logger.setLevel(logging.INFO)
+    handlers = [logging.StreamHandler()]
+    handlers.append(logging.FileHandler(
+        logfile, mode='a'))
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s', handlers=handlers,     
+    )
+    # this bit will make sure you won't have 
+    # duplicated messages in the output
+    # if not len(logger.handlers): 
+    #     logger.addHandler(handler)
+    return logger
+
+def run_parallel(rank, pad_size, window_r, NUM_CLASS, train_dataloader, test_dataloader, args, world_size):
+    import time
+    start = time.process_time()
+    # your code here    
+    logger = create_logger(args, window_r)
+    globals()['logger'] = logger
+    logger.info('Starting pooling')
+    p = Pool()
+    logging.info(f"Running basic DDP example on rank {rank}.")
+    logging.info(args)
+
+    logging.info(f"DEVICE COUNT {torch.cuda.device_count()}")
+    logging.info(f'GPU: {args.gpu}')
+    # print(f"Rank {rank} Time taken 1:" + str(time.process_time() - start))
+    
+    start = time.process_time()
+    setup(rank, world_size)
+    # print(f"Rank {rank} Time taken 2:" + str(time.process_time() - start))
+    
+    if not args.debug:
+        writer_comment = f'{args.logfile}'#'_'.join(['vm','un'+str(args.uncert), str(args.weight), args.logfile]) 
+        tb = SummaryWriter(comment = writer_comment)
+    else:
+        writer_comment = './logs/tb'#'_'.join(['vm','un'+str(args.uncert), str(args.weight), args.logfile]) 
+        tb = SummaryWriter(comment = writer_comment)
+    
+    ##BUILD MODEL##
+    start = time.process_time()
+    model = RegNet(pad_size, winsize=window_r, dim=3, n_class=NUM_CLASS).to(rank)
+    ddp_model = DDP(model, device_ids=[rank], output_device = rank)
+    train = TrainModel(ddp_model, train_dataloader, test_dataloader, args, NUM_CLASS, tb=tb)
+    # print(f"Rank {rank} Time taken 3:" + str(time.process_time() - start))
+    train.run()
+    if tb is not None:
+        tb.close()
+    cleanup()
+    
 if __name__ == "__main__":
     args = get_args()
     downsample_rate = 16
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
     args.weight = [float(i) for i in args.weight.split(',')]
-    
-    handlers = [logging.StreamHandler()]
     if args.log:
         args.log = os.path.join(args.log, args.dataset, datetime.now().strftime("%m_%d_%y_%H_%M"))
         if not os.path.isdir(args.log):
             os.makedirs(args.log)
+    if args.log:
+        savepath = os.path.join(args.log, 'ckpts')
+    else:
+        savepath = f'ckpts/vm'
+    if not os.path.exists(savepath):
+            os.makedirs(savepath)
     #load model
     #device = torch.device(0)
     gpu = [int(i) for i in range(torch.cuda.device_count())]
+    world_size = len(gpu)
     if args.dataset=='CANDI':
         pad_size=[160, 160, 128]
         window_r = 7
@@ -126,50 +197,8 @@ if __name__ == "__main__":
                                                                      size=pad_size, mod="MR", bsize=1, num_workers=1)
         window_r = 7
         NUM_CLASS = 5
-         
-    ##BUILD MODEL##
-    model = RegNet(pad_size, winsize=window_r, dim=3, n_class=NUM_CLASS).cuda()
     
-    if len(gpu)>1:
-        model = torch.nn.DataParallel(model, device_ids=gpu)
-    #model = nn.DataParallel(model, device_ids=gpu).to(device)
-    # import ipdb; ipdb.set_trace()
-    
-    # if args.sgd:
-    #     opt = SGD(model.parameters(), lr = args.lr)
-    # else:
-    #     opt = Adam(model.parameters(),lr = args.lr)
-
-    # # scheduler = StepLR(opt, step_size=5, gamma=0.1)
-    # scheduler = None
-    # import ipdb; ipdb.set_trace()
-    
-    if args.debug:
-        logfile = os.path.join(args.log, 'logs_wnidow_{window_r}.txt')
-    else:
-        logfile = os.path.join(args.logfile, f'{datetime.now().strftime("%m%d%H%M")}.txt')
-    handlers.append(logging.FileHandler(
-        logfile, mode='a'))
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s', handlers=handlers,     
-    )
-    logging.info(args)
-    device = torch.device("cuda")
-    logging.info(f'Device: {device}')
-
-    logging.info(f"DEVICE COUNT {torch.cuda.device_count()}")
-    logging.info(f'GPU: {args.gpu}')
-    
-    if not args.debug:
-        writer_comment = f'{args.logfile}'#'_'.join(['vm','un'+str(args.uncert), str(args.weight), args.logfile]) 
-        tb = SummaryWriter(comment = writer_comment)
-    else:
-        writer_comment = './logs/tb'#'_'.join(['vm','un'+str(args.uncert), str(args.weight), args.logfile]) 
-        tb = SummaryWriter(comment = writer_comment)
-
-    train = TrainModel(model, train_dataloader, test_dataloader, args, NUM_CLASS, tb=tb)
-    train.run()
-
-    if tb is not None:
-        tb.close()
+    mp.spawn(run_parallel,
+             args=(pad_size, window_r, NUM_CLASS, train_dataloader, test_dataloader, args, world_size),
+             nprocs=world_size,
+             join=True)
